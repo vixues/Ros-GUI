@@ -1,4 +1,8 @@
-"""Professional point cloud renderer with optimized performance and features."""
+"""Professional point cloud renderer with optimized performance and features.
+
+This renderer uses the new UI rendering framework for optimal performance
+and integrates with the real-time optimization system.
+"""
 import pygame
 import math
 import time
@@ -12,6 +16,8 @@ except ImportError:
     np = None
 
 from ..design.design_system import DesignSystem
+from .ui_renderer import get_renderer
+from .realtime_optimizer import get_optimizer
 
 # Point cloud rendering using simple 3D projection
 HAS_POINTCLOUD = True
@@ -29,6 +35,10 @@ class PointCloudRenderer:
         self.camera_angle_x = 0.0
         self.camera_angle_y = 0.0
         self.zoom = 1.0
+        
+        # Rendering system integration
+        self.renderer = get_renderer()
+        self.optimizer = get_optimizer()
         
         # Rendering settings
         self.max_points = 20000  # Adaptive based on performance
@@ -51,16 +61,24 @@ class PointCloudRenderer:
             'fps': 0.0
         }
         
-        # Cache
+        # Enhanced cache with hash-based invalidation
         self._last_points_hash = None
         self._last_render_params = None
         self._cached_surface = None
+        self._cache_key = None
         
     def set_camera(self, angle_x: float, angle_y: float, zoom: float):
-        """Update camera parameters."""
+        """Update camera parameters and invalidate cache if changed."""
+        old_params = (self.camera_angle_x, self.camera_angle_y, self.zoom)
         self.camera_angle_x = angle_x
         self.camera_angle_y = angle_y
         self.zoom = zoom
+        
+        # Invalidate cache if camera changed
+        new_params = (angle_x, angle_y, zoom)
+        if old_params != new_params:
+            self._last_render_params = None
+            self._cached_surface = None
         
     def filter_points(self, points):
         """Apply filtering to point cloud."""
@@ -146,34 +164,47 @@ class PointCloudRenderer:
         return points[sampled_indices]
     
     def compute_colors(self, points, z_final, max_dist: float):
-        """Compute colors based on color scheme."""
-        if self.color_scheme == 'uniform':
-            primary_r, primary_g, primary_b = DesignSystem.COLORS['primary']
-            return np.full((len(points), 3), [primary_r, primary_g, primary_b], dtype=np.uint8)
+        """Compute colors based on color scheme using color manager."""
+        primary_color = DesignSystem.COLORS['primary']
         
-        # Depth-based coloring
+        if self.color_scheme == 'uniform':
+            return np.full((len(points), 3), primary_color, dtype=np.uint8)
+        
+        # Depth-based coloring with enhanced gradient
         z_normalized = np.clip((z_final + max_dist) / (2 * max_dist), 0.0, 1.0)
-        primary_r, primary_g, primary_b = DesignSystem.COLORS['primary']
         
         colors = np.zeros((len(points), 3), dtype=np.uint8)
-        colors[:, 0] = (primary_r * z_normalized).astype(np.uint8)
-        colors[:, 1] = (primary_g * z_normalized).astype(np.uint8)
-        colors[:, 2] = primary_b
         
         if self.color_scheme == 'height':
-            # Height-based coloring (Z coordinate)
+            # Height-based coloring (Z coordinate) with smooth gradient
             z_coords = points[:, 2]
             z_min, z_max = np.min(z_coords), np.max(z_coords)
             if z_max > z_min:
                 height_normalized = (z_coords - z_min) / (z_max - z_min)
-                colors[:, 0] = (primary_r * height_normalized).astype(np.uint8)
-                colors[:, 1] = (primary_g * height_normalized).astype(np.uint8)
-                colors[:, 2] = (primary_b * height_normalized).astype(np.uint8)
+                # Use color manager for smooth blending
+                for i, h_norm in enumerate(height_normalized):
+                    blended = self.renderer.blend_colors(
+                        DesignSystem.COLORS['primary_dark'],
+                        DesignSystem.COLORS['primary_light'],
+                        h_norm
+                    )
+                    colors[i] = blended
+            else:
+                colors[:] = primary_color
+        else:
+            # Depth-based coloring with smooth gradient
+            for i, z_norm in enumerate(z_normalized):
+                blended = self.renderer.blend_colors(
+                    DesignSystem.COLORS['primary_dark'],
+                    DesignSystem.COLORS['primary_light'],
+                    z_norm
+                )
+                colors[i] = blended
         
         return colors
     
     def render(self, points) -> Optional[pygame.Surface]:
-        """Render point cloud to pygame surface with optimizations."""
+        """Render point cloud to pygame surface with optimizations and caching."""
         start_time = time.time()
         
         if not HAS_POINTCLOUD:
@@ -187,6 +218,28 @@ class PointCloudRenderer:
             surface = pygame.Surface((self.width, self.height))
             surface.fill(DesignSystem.COLORS['bg'])
             return surface
+        
+        # Check cache first
+        current_params = (self.camera_angle_x, self.camera_angle_y, self.zoom, 
+                        self.width, self.height, self.color_scheme)
+        
+        # Simple hash for points (use first/last/middle points for quick comparison)
+        if isinstance(points, np.ndarray) and len(points) > 0:
+            points_hash = hash((len(points), 
+                              tuple(points[0]) if len(points) > 0 else None,
+                              tuple(points[-1]) if len(points) > 1 else None,
+                              tuple(points[len(points)//2]) if len(points) > 2 else None))
+        else:
+            points_hash = hash(str(points)[:100])  # Simple hash for non-array
+        
+        cache_key = (points_hash, current_params)
+        
+        # Check if we can use cached surface
+        if (self._cache_key == cache_key and 
+            self._cached_surface is not None and
+            self._cached_surface.get_width() == self.width and
+            self._cached_surface.get_height() == self.height):
+            return self._cached_surface
             
         try:
             # Validate input
@@ -269,7 +322,7 @@ class PointCloudRenderer:
             # Compute colors for all points (they're all valid after clip)
             colors = self.compute_colors(filtered_points, z_final, max_dist)
             
-            # Vectorized point drawing using pixel array
+            # Vectorized point drawing using pixel array with optimized access
             # Note: pygame.surfarray.pixels3d uses [y, x] indexing
             pixel_array = pygame.surfarray.pixels3d(surface)
             
@@ -278,29 +331,41 @@ class PointCloudRenderer:
             if len(proj_x) > 0 and len(proj_y) > 0:
                 try:
                     if self.point_size == 1:
-                        # Single pixel - fastest method
+                        # Single pixel - fastest method with direct vectorized assignment
+                        # Since we already clipped, all points are valid
                         min_len = min(len(proj_x), len(proj_y), len(colors))
                         if min_len > 0:
+                            # Direct assignment - fastest for single pixel points
                             pixel_array[proj_y[:min_len], proj_x[:min_len]] = colors[:min_len]
                     else:
-                        # Multi-pixel points with bounds checking
-                        for i in range(len(proj_x)):
-                            px, py = int(proj_x[i]), int(proj_y[i])
-                            # Double-check bounds (shouldn't be needed after clip, but safety)
-                            if 0 <= px < self.width and 0 <= py < self.height:
-                                color = colors[i]
-                                size = self.point_size
-                                half_size = size // 2
-                                # Draw square of pixels
-                                for dy in range(-half_size, half_size + 1):
-                                    for dx in range(-half_size, half_size + 1):
-                                        x_pos, y_pos = px + dx, py + dy
-                                        if 0 <= x_pos < self.width and 0 <= y_pos < self.height:
-                                            pixel_array[y_pos, x_pos] = color
-                except (IndexError, ValueError) as e:
+                        # Multi-pixel points with optimized batch drawing
+                        # Limit processing for performance
+                        max_points_to_draw = min(5000, len(proj_x))
+                        half_size = self.point_size // 2
+                        
+                        # Process in batches for better performance
+                        batch_size = 100
+                        for batch_start in range(0, max_points_to_draw, batch_size):
+                            batch_end = min(batch_start + batch_size, max_points_to_draw)
+                            batch_x = proj_x[batch_start:batch_end]
+                            batch_y = proj_y[batch_start:batch_end]
+                            batch_colors = colors[batch_start:batch_end]
+                            
+                            for i, (px, py, color) in enumerate(zip(batch_x, batch_y, batch_colors)):
+                                px, py = int(px), int(py)
+                                # Draw square of pixels with bounds checking
+                                y_min = max(0, py - half_size)
+                                y_max = min(self.height, py + half_size + 1)
+                                x_min = max(0, px - half_size)
+                                x_max = min(self.width, px + half_size + 1)
+                                
+                                if y_max > y_min and x_max > x_min:
+                                    pixel_array[y_min:y_max, x_min:x_max] = color
+                except (IndexError, ValueError, MemoryError) as e:
                     # Fallback: draw points one by one if vectorized method fails
                     print(f"Vectorized drawing failed, using fallback: {e}")
-                    for i in range(min(len(proj_x), len(proj_y), len(colors))):
+                    max_points = min(5000, len(proj_x))  # Limit fallback points
+                    for i in range(min(max_points, len(proj_x), len(proj_y), len(colors))):
                         px, py = int(proj_x[i]), int(proj_y[i])
                         if 0 <= px < self.width and 0 <= py < self.height:
                             try:
@@ -331,8 +396,10 @@ class PointCloudRenderer:
                     DesignSystem.COLORS['primary'],  # Z - Blue/White
                 ]
                 
+                axis_labels = ['X', 'Y', 'Z']
+                
                 # Project axes using the same center and scale as point cloud
-                for axis_point, color in zip(axis_points, axis_colors):
+                for idx, (axis_point, color) in enumerate(zip(axis_points, axis_colors)):
                     # Project axis endpoint using same transformation as points
                     axis_centered = axis_point  # Already relative to center
                     
@@ -355,25 +422,27 @@ class PointCloudRenderer:
                                        (origin_x, origin_y), 
                                        (axis_proj_x, axis_proj_y), 3)
                         
-                        # Draw axis label at endpoint
-                        font = DesignSystem.get_font('small')
-                        axis_labels = ['X', 'Y', 'Z']
-                        label_idx = list(axis_colors).index(color)
-                        if label_idx < len(axis_labels):
-                            label_surf = font.render(axis_labels[label_idx], True, color)
-                            # Position label slightly offset from endpoint
-                            label_pos = (axis_proj_x + 5, axis_proj_y - 5)
-                            surface.blit(label_surf, label_pos)
+                        # Draw axis label at endpoint using optimized renderer
+                        if idx < len(axis_labels):
+                            label_text = axis_labels[idx]
+                            label_width, label_height = self.renderer.measure_text(label_text, 'small')
+                            label_x = axis_proj_x + 5
+                            label_y = axis_proj_y - 5
+                            self.renderer.render_text(surface, label_text,
+                                                    (label_x, label_y),
+                                                    size='small',
+                                                    color=color)
             
-            # Draw info text
+            # Draw info text using optimized renderer
             if self.show_info:
-                font = DesignSystem.get_font('small')
                 render_time = (time.time() - start_time) * 1000
                 info_text = (f"Points: {original_count} → {len(proj_x)} | "
                            f"Zoom: {self.zoom:.2f} | "
                            f"Time: {render_time:.1f}ms")
-                text_surf = font.render(info_text, True, DesignSystem.COLORS['text_secondary'])
-                surface.blit(text_surf, (10, 10))
+                self.renderer.render_text(surface, info_text,
+                                        (10, 10),
+                                        size='small',
+                                        color=DesignSystem.COLORS['text_secondary'])
             
             # Update stats
             render_time = time.time() - start_time
@@ -383,6 +452,16 @@ class PointCloudRenderer:
                 'render_time': render_time,
                 'fps': 1.0 / render_time if render_time > 0 else 0
             }
+            
+            # Cache the rendered surface
+            self._cache_key = cache_key
+            self._cached_surface = surface.copy() if surface else None
+            self._last_render_params = current_params
+            self._last_points_hash = points_hash
+            
+            # Store in global cache for reuse
+            if surface:
+                self.optimizer.cache_surface(cache_key, surface)
             
             return surface
             
@@ -394,7 +473,27 @@ class PointCloudRenderer:
             try:
                 surface = pygame.Surface((self.width, self.height))
                 surface.fill(DesignSystem.COLORS['bg'])
+                # Mark dirty region for optimization
+                self.optimizer.mark_dirty(pygame.Rect(0, 0, self.width, self.height))
                 return surface
             except:
                 return None
+    
+    def invalidate_cache(self):
+        """Invalidate render cache."""
+        self._cache_key = None
+        self._cached_surface = None
+        self._last_render_params = None
+        self._last_points_hash = None
+    
+    def set_size(self, width: int, height: int):
+        """Update renderer size and invalidate cache."""
+        if self.width != width or self.height != height:
+            self.width = width
+            self.height = height
+            self.invalidate_cache()
+    
+    def get_stats(self) -> dict:
+        """Get rendering statistics."""
+        return self.render_stats.copy()
 

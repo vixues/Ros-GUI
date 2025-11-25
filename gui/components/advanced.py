@@ -1,4 +1,4 @@
-"""Advanced UI components for maps, JSON editing, and topic lists."""
+"""Advanced UI components for maps, JSON editing, and topic lists with optimized rendering."""
 import pygame
 import json
 from typing import Optional, Dict, Any, List, Tuple
@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any, List, Tuple
 from .base import UIComponent
 from .interactive import Items
 from ..design.design_system import DesignSystem
+from ..renderers.ui_renderer import get_renderer
 
 
 class MapComponent(UIComponent):
@@ -33,12 +34,11 @@ class MapComponent(UIComponent):
     
     def update(self, dt: float):
         """Update component state."""
-        pass
+        super().update(dt)
     
-    def draw(self, surface: pygame.Surface):
-        """Draw map component with drone positions and trajectories."""
-        if not self.visible:
-            return
+    def _draw_self(self, surface: pygame.Surface):
+        """Draw map component with drone positions and trajectories using optimized renderer."""
+        renderer = self._renderer
         
         # Calculate map area (relative to component origin, which Card sets to 0,0)
         padding = DesignSystem.SPACING['md']
@@ -51,8 +51,9 @@ class MapComponent(UIComponent):
         )
         
         # Draw map background
-        pygame.draw.rect(surface, DesignSystem.COLORS['bg_secondary'], map_rect,
-                       border_radius=DesignSystem.RADIUS['sm'])
+        renderer.draw_rect(surface, map_rect,
+                         DesignSystem.COLORS['bg_secondary'],
+                         border_radius=DesignSystem.RADIUS['sm'])
         
         # Collect all drone positions
         drone_positions = []
@@ -75,11 +76,14 @@ class MapComponent(UIComponent):
         
         if len(drone_positions) == 0:
             # No drones with valid positions
-            font = DesignSystem.get_font('label')
-            no_data_text = font.render("No drone positions available. Connect drones to see their positions on the map.",
-                                     True, DesignSystem.COLORS['text_secondary'])
-            text_rect = no_data_text.get_rect(center=map_rect.center)
-            surface.blit(no_data_text, text_rect)
+            no_data_text = "No drone positions available. Connect drones to see their positions on the map."
+            text_width, text_height = renderer.measure_text(no_data_text, 'label')
+            text_x = map_rect.centerx - text_width // 2
+            text_y = map_rect.centery - text_height // 2
+            renderer.render_text(surface, no_data_text,
+                               (text_x, text_y),
+                               size='label',
+                               color=DesignSystem.COLORS['text_secondary'])
         else:
             # Calculate map bounds
             lats = [d['lat'] for d in drone_positions]
@@ -115,7 +119,6 @@ class MapComponent(UIComponent):
                         pygame.draw.lines(surface, color, False, points, 2)
             
             # Draw drone positions
-            font = DesignSystem.get_font('small')
             for drone_data in drone_positions:
                 x = map_rect.x + int((drone_data['lon'] - min_lon) / lon_range * map_rect.width)
                 y = map_rect.y + int((max_lat - drone_data['lat']) / lat_range * map_rect.height)
@@ -141,23 +144,25 @@ class MapComponent(UIComponent):
                     if state.battery > 0:
                         info_text += f" | Bat: {state.battery:.0f}%"
                 
-                text_surf = font.render(info_text, True, DesignSystem.COLORS['text'])
-                text_rect = text_surf.get_rect()
-                text_rect.centerx = x
-                text_rect.y = y + 15
+                text_width, text_height = renderer.measure_text(info_text, 'small')
+                text_x = x - text_width // 2
+                text_y = y + 15
                 
                 # Draw background for text
-                bg_rect = text_rect.inflate(10, 5)
-                pygame.draw.rect(surface, DesignSystem.COLORS['bg'], bg_rect,
-                               border_radius=DesignSystem.RADIUS['sm'])
-                pygame.draw.rect(surface, color, bg_rect, 1,
-                               border_radius=DesignSystem.RADIUS['sm'])
-                surface.blit(text_surf, text_rect)
+                bg_rect = pygame.Rect(text_x - 5, text_y - 2, text_width + 10, text_height + 4)
+                renderer.draw_rect_with_border(surface, bg_rect,
+                                             DesignSystem.COLORS['bg'],
+                                             color,
+                                             border_width=1,
+                                             border_radius=DesignSystem.RADIUS['sm'])
+                renderer.render_text(surface, info_text,
+                                   (text_x, text_y),
+                                   size='small',
+                                   color=DesignSystem.COLORS['text'])
             
             # Draw legend
             legend_y = map_rect.y + 10
             legend_x = map_rect.x + 10
-            legend_font = DesignSystem.get_font('small')
             
             legend_items = [
                 ("Selected Drone", DesignSystem.COLORS['accent']),
@@ -167,8 +172,17 @@ class MapComponent(UIComponent):
             
             for i, (label, color) in enumerate(legend_items):
                 pygame.draw.circle(surface, color, (legend_x + 5, legend_y + i * 20 + 5), 5)
-                legend_text = legend_font.render(label, True, DesignSystem.COLORS['text'])
-                surface.blit(legend_text, (legend_x + 15, legend_y + i * 20))
+                renderer.render_text(surface, label,
+                                   (legend_x + 15, legend_y + i * 20),
+                                   size='small',
+                                   color=DesignSystem.COLORS['text'])
+    
+    def draw(self, surface: pygame.Surface):
+        """Override draw to handle coordinate transformation from Card."""
+        if not self.visible:
+            return
+        self._draw_self(surface)
+        super().draw(surface)  # Draw children if any
 
 
 class JSONEditor(UIComponent):
@@ -469,10 +483,14 @@ class JSONEditor(UIComponent):
                     
     def update(self, dt: float):
         """Update cursor blink."""
+        super().update(dt)
         self.cursor_timer += dt
         if self.cursor_timer > 0.5:
+            was_visible = self.cursor_visible
             self.cursor_visible = not self.cursor_visible
             self.cursor_timer = 0.0
+            if was_visible != self.cursor_visible:
+                self.mark_dirty()
             
     def format_json(self):
         """Format JSON text."""
@@ -484,24 +502,27 @@ class JSONEditor(UIComponent):
         except:
             pass
             
-    def draw(self, surface: pygame.Surface):
-        """Draw JSON editor with console style."""
-        if not self.visible:
-            return
+    def _draw_self(self, surface: pygame.Surface):
+        """Draw JSON editor with console style using optimized renderer."""
+        renderer = self._renderer
         
         # Draw background
         bg_color = DesignSystem.COLORS['surface_active'] if self.active else DesignSystem.COLORS['surface']
-        pygame.draw.rect(surface, bg_color, self.rect,
-                       border_radius=DesignSystem.RADIUS['md'])
         border_color = DesignSystem.COLORS['primary'] if self.active else DesignSystem.COLORS['border']
-        pygame.draw.rect(surface, border_color, self.rect,
-                       width=2 if self.active else 1, border_radius=DesignSystem.RADIUS['md'])
+        border_width = 2 if self.active else 1
+        
+        renderer.draw_rect_with_border(surface, self.rect,
+                                     bg_color,
+                                     border_color,
+                                     border_width=border_width,
+                                     border_radius=DesignSystem.RADIUS['md'])
         
         # Draw line numbers
         line_num_rect = pygame.Rect(self.rect.x + 4, self.rect.y + 4, 
                                    self.line_number_width, self.rect.height - 8)
-        pygame.draw.rect(surface, DesignSystem.COLORS['bg'], line_num_rect,
-                       border_radius=DesignSystem.RADIUS['sm'])
+        renderer.draw_rect(surface, line_num_rect,
+                         DesignSystem.COLORS['bg'],
+                         border_radius=DesignSystem.RADIUS['sm'])
         
         # Clip to text area
         text_rect = pygame.Rect(
@@ -513,7 +534,6 @@ class JSONEditor(UIComponent):
         old_clip = surface.get_clip()
         surface.set_clip(text_rect)
         
-        font = DesignSystem.get_font('console')
         # Ensure text is always a string
         text_str = str(self.text) if self.text is not None else ""
         lines = text_str.split('\n') if text_str else [""]
@@ -548,9 +568,12 @@ class JSONEditor(UIComponent):
                         sel_x2 = text_rect.right
                     
                     sel_rect = pygame.Rect(sel_x1, line_y, sel_x2 - sel_x1, self.line_height)
-                    pygame.draw.rect(surface, DesignSystem.COLORS['primary'], sel_rect, 
-                                   border_radius=2)
+                    renderer.draw_rect(surface, sel_rect,
+                                     DesignSystem.COLORS['primary'],
+                                     border_radius=2)
         
+        # Use font renderer for text rendering (but need character-by-character for syntax highlighting)
+        font = renderer.font_renderer.get_font('console')
         for i, line in enumerate(lines):
             line_y = y_offset + i * self.line_height
             if line_y + self.line_height < text_rect.y:
@@ -559,10 +582,12 @@ class JSONEditor(UIComponent):
                 break
                 
             # Draw line number
-            line_num_surf = font.render(str(i + 1), True, DesignSystem.COLORS['text_tertiary'])
-            surface.blit(line_num_surf, (self.rect.x + 8, line_y))
+            renderer.render_text(surface, str(i + 1),
+                               (self.rect.x + 8, line_y),
+                               size='console',
+                               color=DesignSystem.COLORS['text_tertiary'])
             
-            # Draw line with syntax highlighting
+            # Draw line with syntax highlighting (character by character for highlighting)
             x_pos = text_rect.x - self.scroll_x
             for j, char in enumerate(line):
                 char_x = x_pos + j * self.char_width
@@ -582,7 +607,8 @@ class JSONEditor(UIComponent):
                     color = DesignSystem.COLORS['warning']
                 else:
                     color = DesignSystem.COLORS['text']
-                    
+                
+                # Render single character
                 char_surf = font.render(char, True, color)
                 surface.blit(char_surf, (char_x, line_y))
         

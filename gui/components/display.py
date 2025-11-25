@@ -1,4 +1,4 @@
-"""Professional display components for images and point clouds."""
+"""Professional display components for images and point clouds with optimized rendering."""
 import pygame
 import math
 from typing import Optional, Tuple, List
@@ -13,10 +13,11 @@ except ImportError:
 from .base import UIComponent
 from ..design.design_system import DesignSystem
 from ..renderers.point_cloud import PointCloudRenderer, HAS_POINTCLOUD
+from ..renderers.ui_renderer import get_renderer
 
 
 class ImageDisplayComponent(UIComponent):
-    """Professional image display component with optimized rendering."""
+    """Professional image display component with optimized rendering and caching."""
     
     def __init__(self, x: int, y: int, width: int, height: int, title: str = ""):
         super().__init__(x, y, width, height)
@@ -24,9 +25,19 @@ class ImageDisplayComponent(UIComponent):
         self.image: Optional[pygame.Surface] = None
         self.placeholder_text = "Waiting for image..."
         
+        # Caching for scaled images
+        self._cached_scaled_image: Optional[pygame.Surface] = None
+        self._cached_image_size: Optional[Tuple[int, int]] = None
+        self._cached_display_area: Optional[pygame.Rect] = None
+        
     def set_image(self, image: Optional[pygame.Surface]):
-        """Set the image to display."""
-        self.image = image
+        """Set the image to display and invalidate cache."""
+        if self.image != image:
+            self.image = image
+            self._cached_scaled_image = None
+            self._cached_image_size = None
+            self._cached_display_area = None
+            self.mark_dirty()
         
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle events."""
@@ -35,57 +46,98 @@ class ImageDisplayComponent(UIComponent):
         return self.rect.collidepoint(event.pos) if hasattr(event, 'pos') else False
         
     def update(self, dt: float):
-        """Update component state."""
-        pass
+        """Update component state and invalidate cache if size changed."""
+        super().update(dt)
         
-    def draw(self, surface: pygame.Surface):
-        """Draw image display component."""
-        if not self.visible:
-            return
-            
-        # Draw background
-        pygame.draw.rect(surface, DesignSystem.COLORS['surface'], self.rect,
-                        border_radius=DesignSystem.RADIUS['lg'])
-        pygame.draw.rect(surface, DesignSystem.COLORS['border'], self.rect,
-                        width=1, border_radius=DesignSystem.RADIUS['lg'])
+        # Invalidate cache if component size changed
+        if hasattr(self, '_last_rect_size'):
+            if self._last_rect_size != (self.rect.width, self.rect.height):
+                self._cached_scaled_image = None
+                self._cached_image_size = None
+                self._cached_display_area = None
+                self._last_rect_size = (self.rect.width, self.rect.height)
+        else:
+            self._last_rect_size = (self.rect.width, self.rect.height)
+        
+    def _draw_self(self, surface: pygame.Surface):
+        """Draw image display component using optimized renderer."""
+        renderer = self._renderer
+        
+        # Draw background with border
+        renderer.draw_rect_with_border(surface, self.rect,
+                                     DesignSystem.COLORS['surface'],
+                                     DesignSystem.COLORS['border'],
+                                     border_width=1,
+                                     border_radius=DesignSystem.RADIUS['lg'])
         
         # Draw title if present
+        header_height = 36 if self.title else 0
         if self.title:
-            header_rect = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 36)
-            pygame.draw.rect(surface, DesignSystem.COLORS['surface_light'], header_rect,
-                           border_radius=DesignSystem.RADIUS['lg'])
-            pygame.draw.rect(surface, DesignSystem.COLORS['border_light'], header_rect,
-                           width=1, border_radius=DesignSystem.RADIUS['lg'])
+            header_rect = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, header_height)
+            renderer.draw_rect_with_border(surface, header_rect,
+                                         DesignSystem.COLORS['surface_light'],
+                                         DesignSystem.COLORS['border_light'],
+                                         border_width=1,
+                                         border_radius=DesignSystem.RADIUS['lg'])
             
-            font = DesignSystem.get_font('label')
-            title_surf = font.render(self.title, True, DesignSystem.COLORS['text'])
-            title_y = header_rect.y + (header_rect.height - title_surf.get_height()) // 2
-            surface.blit(title_surf, (header_rect.x + DesignSystem.SPACING['md'], title_y))
+            title_height = renderer.measure_text(self.title, 'label')[1]
+            title_y = header_rect.y + (header_rect.height - title_height) // 2
+            renderer.render_text(surface, self.title,
+                               (header_rect.x + DesignSystem.SPACING['md'], title_y),
+                               size='label',
+                               color=DesignSystem.COLORS['text'])
         
         # Calculate image area (below title if present)
+        padding = DesignSystem.SPACING['sm']
         img_area = pygame.Rect(
-            self.rect.x + 10,
-            self.rect.y + (36 + 10 if self.title else 10),
-            self.rect.width - 20,
-            self.rect.height - (36 + 20 if self.title else 20)
+            self.rect.x + padding,
+            self.rect.y + header_height + padding,
+            self.rect.width - padding * 2,
+            self.rect.height - header_height - padding * 2
         )
         
-        # Draw image or placeholder
+        # Draw image or placeholder with caching
         if self.image:
             img_rect = self.image.get_rect()
             # Scale to fill area while maintaining aspect ratio
-            scale = min(img_area.width / img_rect.width, img_area.height / img_rect.height)
-            new_size = (int(img_rect.width * scale), int(img_rect.height * scale))
-            scaled_img = pygame.transform.scale(self.image, new_size)
-            scaled_rect = scaled_img.get_rect(center=img_area.center)
-            surface.blit(scaled_img, scaled_rect)
+            if img_rect.width > 0 and img_rect.height > 0:
+                # Check if we can use cached scaled image
+                current_image_size = (self.image.get_width(), self.image.get_height())
+                current_display_area = img_area.copy()
+                
+                use_cache = (self._cached_scaled_image is not None and
+                           self._cached_image_size == current_image_size and
+                           self._cached_display_area == current_display_area)
+                
+                if use_cache:
+                    scaled_img = self._cached_scaled_image
+                    scaled_rect = scaled_img.get_rect(center=img_area.center)
+                else:
+                    # Calculate scale and create scaled image
+                    scale = min(img_area.width / img_rect.width, img_area.height / img_rect.height)
+                    new_size = (int(img_rect.width * scale), int(img_rect.height * scale))
+                    if new_size[0] > 0 and new_size[1] > 0:
+                        scaled_img = pygame.transform.smoothscale(self.image, new_size)
+                        scaled_rect = scaled_img.get_rect(center=img_area.center)
+                        
+                        # Cache the scaled image
+                        self._cached_scaled_image = scaled_img
+                        self._cached_image_size = current_image_size
+                        self._cached_display_area = current_display_area.copy()
+                    else:
+                        scaled_img = None
+                
+                if scaled_img:
+                    surface.blit(scaled_img, scaled_rect)
         else:
             # Draw placeholder
-            font = DesignSystem.get_font('label')
-            placeholder_surf = font.render(self.placeholder_text, True, 
-                                          DesignSystem.COLORS['text_secondary'])
-            placeholder_rect = placeholder_surf.get_rect(center=img_area.center)
-            surface.blit(placeholder_surf, placeholder_rect)
+            text_width, text_height = renderer.measure_text(self.placeholder_text, 'label')
+            placeholder_x = img_area.centerx - text_width // 2
+            placeholder_y = img_area.centery - text_height // 2
+            renderer.render_text(surface, self.placeholder_text,
+                               (placeholder_x, placeholder_y),
+                               size='label',
+                               color=DesignSystem.COLORS['text_secondary'])
 
 
 class PointCloudDisplayComponent(UIComponent):
@@ -101,6 +153,11 @@ class PointCloudDisplayComponent(UIComponent):
         self.camera_angle_x = 0.0
         self.camera_angle_y = 0.0
         self.zoom = 1.0
+        
+        # Caching for scaled point cloud surface
+        self._cached_scaled_pc: Optional[pygame.Surface] = None
+        self._cached_pc_size: Optional[Tuple[int, int]] = None
+        self._cached_pc_display_area: Optional[pygame.Rect] = None
         
         # 3D cube control (bottom left corner)
         self.cube_size = 80
@@ -129,17 +186,27 @@ class PointCloudDisplayComponent(UIComponent):
             self.renderer = PointCloudRenderer(width=width - 20, height=height - 56)
         
     def set_pointcloud(self, pc_surface: Optional[pygame.Surface]):
-        """Set the point cloud surface to display."""
-        self.pc_surface = pc_surface
+        """Set the point cloud surface to display and invalidate cache."""
+        if self.pc_surface != pc_surface:
+            self.pc_surface = pc_surface
+            self._cached_scaled_pc = None
+            self._cached_pc_size = None
+            self._cached_pc_display_area = None
+            self.mark_dirty()
         
     def set_camera(self, angle_x: float, angle_y: float, zoom: float):
-        """Set camera parameters with port system notification."""
+        """Set camera parameters with port system notification and cache invalidation."""
         old_camera = (self.camera_angle_x, self.camera_angle_y, self.zoom)
         self.camera_angle_x = angle_x
         self.camera_angle_y = angle_y
         self.zoom = zoom
         if self.renderer:
             self.renderer.set_camera(angle_x, angle_y, zoom)
+        
+        # Invalidate cache when camera changes
+        self._cached_scaled_pc = None
+        self._cached_pc_size = None
+        self._cached_pc_display_area = None
         
         # Emit camera change signal through port system
         new_camera = (angle_x, angle_y, zoom)
@@ -149,6 +216,7 @@ class PointCloudDisplayComponent(UIComponent):
         port = self.get_port('value')
         if port:
             port.value = new_camera
+        self.mark_dirty()
             
     def get_camera(self) -> Tuple[float, float, float]:
         """Get current camera parameters."""
@@ -313,12 +381,16 @@ class PointCloudDisplayComponent(UIComponent):
         cube_rect = self._get_cube_rect()
         
         # Draw cube background with hover effect
+        renderer = self._renderer
         bg_color = DesignSystem.COLORS['surface_active'] if self.cube_hovered_face else DesignSystem.COLORS['surface_light']
-        pygame.draw.rect(surface, bg_color, cube_rect,
-                       border_radius=DesignSystem.RADIUS['sm'])
         border_color = DesignSystem.COLORS['primary'] if self.cube_hovered_face else DesignSystem.COLORS['border']
-        pygame.draw.rect(surface, border_color, cube_rect,
-                       width=2 if self.cube_hovered_face else 1, border_radius=DesignSystem.RADIUS['sm'])
+        border_width = 2 if self.cube_hovered_face else 1
+        
+        renderer.draw_rect_with_border(surface, cube_rect,
+                                     bg_color,
+                                     border_color,
+                                     border_width=border_width,
+                                     border_radius=DesignSystem.RADIUS['sm'])
         
         # Get cube geometry
         rotated_vertices, rotated_faces, _ = self._get_cube_geometry()
@@ -390,7 +462,7 @@ class PointCloudDisplayComponent(UIComponent):
                            vertices_2d[edge[0]], vertices_2d[edge[1]], 1)
         
         # Draw face labels
-        font = DesignSystem.get_font('small')
+        renderer = self._renderer
         # Determine which face is facing forward based on camera angles
         if abs(self.camera_angle_x + math.pi / 2) < 0.3:
             label = "TOP"
@@ -408,17 +480,23 @@ class PointCloudDisplayComponent(UIComponent):
             label = "ISO"
             
         label_color = DesignSystem.COLORS['primary'] if self.cube_hovered_face else DesignSystem.COLORS['text']
-        label_surf = font.render(label, True, label_color)
-        label_rect = label_surf.get_rect(center=(center_x, center_y))
-        surface.blit(label_surf, label_rect)
+        label_width, label_height = renderer.measure_text(label, 'small')
+        label_x = center_x - label_width // 2
+        label_y = center_y - label_height // 2
+        renderer.render_text(surface, label,
+                           (label_x, label_y),
+                           size='small',
+                           color=label_color)
         
         # Draw instruction hint
-        hint_font = DesignSystem.get_font('small')
         hint_text = "Click face to rotate"
-        hint_surf = hint_font.render(hint_text, True, DesignSystem.COLORS['text_tertiary'])
+        hint_width, hint_height = renderer.measure_text(hint_text, 'small')
         hint_y = cube_rect.bottom + 5
-        if hint_y + hint_surf.get_height() < self.rect.bottom:
-            surface.blit(hint_surf, (cube_rect.x, hint_y))
+        if hint_y + hint_height < self.rect.bottom:
+            renderer.render_text(surface, hint_text,
+                               (cube_rect.x, hint_y),
+                               size='small',
+                               color=DesignSystem.COLORS['text_tertiary'])
             
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle events including cube control clicks and drag rotation with port system integration."""
@@ -541,32 +619,49 @@ class PointCloudDisplayComponent(UIComponent):
         
     def update(self, dt: float):
         """Update component state."""
+        super().update(dt)
         self.cube_rotation += dt * 0.5  # Slow rotation animation
         
-    def draw(self, surface: pygame.Surface):
-        """Draw point cloud display component with enhanced visuals."""
-        if not self.visible:
-            return
-            
-        # Draw background with subtle gradient effect
-        pygame.draw.rect(surface, DesignSystem.COLORS['bg_panel'], self.rect,
-                        border_radius=DesignSystem.RADIUS['md'])
-        pygame.draw.rect(surface, DesignSystem.COLORS['border'], self.rect,
-                        width=1, border_radius=DesignSystem.RADIUS['md'])
+        # Invalidate cache if component size changed
+        if hasattr(self, '_last_rect_size'):
+            if self._last_rect_size != (self.rect.width, self.rect.height):
+                self._cached_scaled_pc = None
+                self._cached_pc_size = None
+                self._cached_pc_display_area = None
+                if self.renderer:
+                    self.renderer.set_size(self.rect.width - 20, self.rect.height - 56)
+                self._last_rect_size = (self.rect.width, self.rect.height)
+        else:
+            self._last_rect_size = (self.rect.width, self.rect.height)
+        
+    def _draw_self(self, surface: pygame.Surface):
+        """Draw point cloud display component with enhanced visuals using optimized renderer."""
+        renderer = self._renderer
+        
+        # Draw background with border
+        renderer.draw_rect_with_border(surface, self.rect,
+                                     DesignSystem.COLORS['bg_panel'],
+                                     DesignSystem.COLORS['border'],
+                                     border_width=1,
+                                     border_radius=DesignSystem.RADIUS['md'])
         
         # Draw title if present
         # Note: Card sets child.rect to (0,0) during draw, so use relative coordinates
+        header_height = 36 if self.title else 0
         if self.title:
-            header_rect = pygame.Rect(0, 0, self.rect.width, 36)
-            pygame.draw.rect(surface, DesignSystem.COLORS['surface_light'], header_rect,
-                           border_radius=DesignSystem.RADIUS['md'])
-            pygame.draw.rect(surface, DesignSystem.COLORS['border_light'], header_rect,
-                           width=1, border_radius=DesignSystem.RADIUS['md'])
+            header_rect = pygame.Rect(0, 0, self.rect.width, header_height)
+            renderer.draw_rect_with_border(surface, header_rect,
+                                         DesignSystem.COLORS['surface_light'],
+                                         DesignSystem.COLORS['border_light'],
+                                         border_width=1,
+                                         border_radius=DesignSystem.RADIUS['md'])
             
-            font = DesignSystem.get_font('label')
-            title_surf = font.render(self.title, True, DesignSystem.COLORS['text'])
-            title_y = header_rect.y + (header_rect.height - title_surf.get_height()) // 2
-            surface.blit(title_surf, (header_rect.x + DesignSystem.SPACING['md'], title_y))
+            title_height = renderer.measure_text(self.title, 'label')[1]
+            title_y = header_rect.y + (header_rect.height - title_height) // 2
+            renderer.render_text(surface, self.title,
+                               (header_rect.x + DesignSystem.SPACING['md'], title_y),
+                               size='label',
+                               color=DesignSystem.COLORS['text'])
         
         # Calculate point cloud area (below title if present, with padding)
         # Use relative coordinates since Card sets rect to (0,0) during draw
@@ -579,23 +674,45 @@ class PointCloudDisplayComponent(UIComponent):
             self.rect.height - header_height - padding * 2
         )
         
-        # Draw point cloud or placeholder
+        # Draw point cloud or placeholder with caching
         if self.pc_surface:
             try:
-                pc_copy = self.pc_surface.copy()
-                pc_rect = pc_copy.get_rect()
+                pc_rect = self.pc_surface.get_rect()
                 if pc_rect.width > 0 and pc_rect.height > 0:
-                    # Scale to fill area completely while maintaining aspect ratio
-                    scale_w = pc_area.width / pc_rect.width
-                    scale_h = pc_area.height / pc_rect.height
-                    scale = max(scale_w, scale_h)  # Fill entire area
-                    new_size = (int(pc_rect.width * scale), int(pc_rect.height * scale))
-                    if new_size[0] > 0 and new_size[1] > 0:
-                        scaled_pc = pygame.transform.scale(pc_copy, new_size)
+                    # Check if we can use cached scaled point cloud
+                    current_pc_size = (self.pc_surface.get_width(), self.pc_surface.get_height())
+                    current_display_area = pc_area.copy()
+                    
+                    use_cache = (self._cached_scaled_pc is not None and
+                               self._cached_pc_size == current_pc_size and
+                               self._cached_pc_display_area == current_display_area)
+                    
+                    if use_cache:
+                        scaled_pc = self._cached_scaled_pc
                         scaled_rect = scaled_pc.get_rect(center=pc_area.center)
+                    else:
+                        # Scale to fill area completely while maintaining aspect ratio
+                        scale_w = pc_area.width / pc_rect.width
+                        scale_h = pc_area.height / pc_rect.height
+                        scale = max(scale_w, scale_h)  # Fill entire area
+                        new_size = (int(pc_rect.width * scale), int(pc_rect.height * scale))
+                        if new_size[0] > 0 and new_size[1] > 0:
+                            # Use smoothscale for better quality on point clouds
+                            scaled_pc = pygame.transform.smoothscale(self.pc_surface, new_size)
+                            scaled_rect = scaled_pc.get_rect(center=pc_area.center)
+                            
+                            # Cache the scaled point cloud
+                            self._cached_scaled_pc = scaled_pc
+                            self._cached_pc_size = current_pc_size
+                            self._cached_pc_display_area = current_display_area.copy()
+                        else:
+                            scaled_pc = None
+                    
+                    if scaled_pc:
                         surface.blit(scaled_pc, scaled_rect)
-            except Exception:
-                pass
+            except Exception as e:
+                # Log error but don't crash
+                print(f"Error drawing point cloud: {e}")
         else:
             # Draw enhanced placeholder with icon-like visual
             center_x, center_y = pc_area.center
@@ -605,20 +722,31 @@ class PointCloudDisplayComponent(UIComponent):
                 center_x - 150, center_y - 40,
                 300, 80
             )
-            pygame.draw.rect(surface, DesignSystem.COLORS['surface_light'], placeholder_bg,
-                           border_radius=DesignSystem.RADIUS['md'])
-            pygame.draw.rect(surface, DesignSystem.COLORS['border'], placeholder_bg,
-                           width=1, border_radius=DesignSystem.RADIUS['md'])
+            renderer.draw_rect_with_border(surface, placeholder_bg,
+                                         DesignSystem.COLORS['surface_light'],
+                                         DesignSystem.COLORS['border'],
+                                         border_width=1,
+                                         border_radius=DesignSystem.RADIUS['md'])
             
             # Draw placeholder text
-            font = DesignSystem.get_font('label')
-            placeholder_surf = font.render("Waiting for point cloud data...", True,
-                                          DesignSystem.COLORS['text_secondary'])
-            placeholder_rect = placeholder_surf.get_rect(center=(center_x, center_y))
-            surface.blit(placeholder_surf, placeholder_rect)
+            placeholder_text = "Waiting for point cloud data..."
+            text_width, text_height = renderer.measure_text(placeholder_text, 'label')
+            placeholder_x = center_x - text_width // 2
+            placeholder_y = center_y - text_height // 2
+            renderer.render_text(surface, placeholder_text,
+                               (placeholder_x, placeholder_y),
+                               size='label',
+                               color=DesignSystem.COLORS['text_secondary'])
         
         # Draw 3D cube control (bottom left) - only if there's space
         cube_rect = self._get_cube_rect()
         if cube_rect.bottom <= self.rect.bottom - padding:
             self._draw_3d_cube_control(surface)
+    
+    def draw(self, surface: pygame.Surface):
+        """Override draw to handle coordinate transformation from Card."""
+        if not self.visible:
+            return
+        self._draw_self(surface)
+        super().draw(surface)  # Draw children if any
 

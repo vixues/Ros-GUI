@@ -1,27 +1,162 @@
-"""Interactive UI components."""
+"""Interactive UI components with optimized rendering."""
 import pygame
 import inspect
 from typing import Optional, List, Tuple, Callable
 
 from .base import UIComponent
 from ..design.design_system import DesignSystem
+from ..renderers.ui_renderer import get_renderer
 
 
 class Button(UIComponent):
-    """Button component with fighter cockpit styling."""
+    """Button component with fighter cockpit styling and auto-sizing based on text."""
     
-    def __init__(self, x: int, y: int, width: int, height: int, text: str,
-                 callback: Callable = None, color: Tuple[int, int, int] = None):
-        super().__init__(x, y, width, height)
+    def __init__(self, x: int, y: int, width: int = None, height: int = None, 
+                 text: str = "", callback: Callable = None, 
+                 color: Tuple[int, int, int] = None,
+                 padding: Tuple[int, int] = None, min_width: int = None, min_height: int = None):
+        """
+        Initialize button component.
+        
+        Args:
+            x: X position
+            y: Y position
+            width: Button width (None for auto-size based on text)
+            height: Button height (None for auto-size based on text)
+            text: Button text
+            callback: Click callback function
+            color: Button color (default: primary color)
+            padding: (horizontal, vertical) padding in pixels (default: from DesignSystem)
+            min_width: Minimum button width (default: 80)
+            min_height: Minimum button height (default: 32)
+        """
+        # Calculate size based on text if not provided
+        if width is None or height is None:
+            renderer = get_renderer()
+            text_width, text_height = renderer.measure_text(text, 'label')
+            
+            # Use provided padding or default from DesignSystem
+            if padding is None:
+                h_padding = DesignSystem.SPACING['md'] * 2
+                v_padding = DesignSystem.SPACING['sm'] * 2
+            else:
+                h_padding, v_padding = padding
+            
+            # Calculate auto size
+            auto_width = text_width + h_padding
+            auto_height = text_height + v_padding
+            
+            # Apply minimums
+            if min_width is None:
+                min_width = 80
+            if min_height is None:
+                min_height = 32
+            
+            # Use provided size or auto-calculated size
+            final_width = width if width is not None else max(auto_width, min_width)
+            final_height = height if height is not None else max(auto_height, min_height)
+        else:
+            final_width = width
+            final_height = height
+        
+        super().__init__(x, y, final_width, final_height)
         self.text = text
         self.color = color or DesignSystem.COLORS['primary']
         self.hovered = False
         self.pressed = False
         self.animation_scale = 1.0
+        self.padding = padding or (DesignSystem.SPACING['md'] * 2, DesignSystem.SPACING['sm'] * 2)
+        self.min_width = min_width or 80
+        self.min_height = min_height or 32
         
         # Connect callback to port system if provided
         if callback:
             self.connect_port('on_click', callback)
+    
+    def set_text(self, text: str, auto_resize: bool = True):
+        """
+        Set button text and optionally resize button.
+        
+        Args:
+            text: New button text
+            auto_resize: If True, automatically resize button to fit new text
+        """
+        if self.text != text:
+            self.text = text
+            if auto_resize:
+                self._resize_to_text()
+            self.mark_dirty()
+    
+    def _resize_to_text(self):
+        """Resize button to fit current text."""
+        renderer = self._renderer
+        text_width, text_height = renderer.measure_text(self.text, 'label')
+        
+        h_padding, v_padding = self.padding
+        new_width = max(text_width + h_padding, self.min_width)
+        new_height = max(text_height + v_padding, self.min_height)
+        
+        # Update rect size while maintaining position
+        old_x, old_y = self.rect.x, self.rect.y
+        self.rect.width = new_width
+        self.rect.height = new_height
+        self.rect.x, self.rect.y = old_x, old_y  # Keep top-left position
+        
+        # Mark dirty to trigger redraw
+        self.mark_dirty()
+    
+    def get_preferred_size(self) -> Tuple[int, int]:
+        """
+        Get the preferred size of the button based on current text.
+        
+        Returns:
+            (width, height) tuple
+        """
+        renderer = self._renderer
+        text_width, text_height = renderer.measure_text(self.text, 'label')
+        
+        h_padding, v_padding = self.padding
+        width = max(text_width + h_padding, self.min_width)
+        height = max(text_height + v_padding, self.min_height)
+        
+        return (width, height)
+    
+    def set_size(self, width: int = None, height: int = None, keep_position: str = 'top-left'):
+        """
+        Set button size manually.
+        
+        Args:
+            width: New width (None to keep current or auto-calculate)
+            height: New height (None to keep current or auto-calculate)
+            keep_position: How to maintain position - 'top-left', 'center', 'bottom-right'
+        """
+        if width is None:
+            width = self.rect.width
+        if height is None:
+            height = self.rect.height
+        
+        # Store old position based on keep_position
+        if keep_position == 'center':
+            old_center = self.rect.center
+        elif keep_position == 'bottom-right':
+            old_bottom = self.rect.bottom
+            old_right = self.rect.right
+        else:  # top-left
+            old_x, old_y = self.rect.x, self.rect.y
+        
+        # Update size
+        self.rect.width = width
+        self.rect.height = height
+        
+        # Restore position
+        if keep_position == 'center':
+            self.rect.center = old_center
+        elif keep_position == 'bottom-right':
+            self.rect.right = old_right
+            self.rect.bottom = old_bottom
+        # else: top-left - already correct
+        
+        self.mark_dirty()
         
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle button events with port system integration."""
@@ -101,21 +236,22 @@ class Button(UIComponent):
         
     def update(self, dt: float):
         """Update button animation."""
+        super().update(dt)
         target_scale = 1.05 if self.hovered else 1.0
         if abs(self.animation_scale - target_scale) > 0.01:
             diff = target_scale - self.animation_scale
             self.animation_scale += diff * dt * 10
+            self.mark_dirty()
             
-    def draw(self, surface: pygame.Surface):
-        """Draw button with fighter cockpit style."""
-        if not self.visible:
-            return
-            
+    def _draw_self(self, surface: pygame.Surface):
+        """Draw button with fighter cockpit style using optimized renderer."""
+        renderer = self._renderer
+        
         # Calculate color based on state
         if self.pressed:
-            bg_color = tuple(max(0, c - 40) for c in self.color)
+            bg_color = renderer.darken_color(self.color, 0.15)
         elif self.hovered:
-            bg_color = tuple(min(255, int(c * 1.2)) for c in self.color)
+            bg_color = renderer.lighten_color(self.color, 0.1)
         else:
             bg_color = self.color
             
@@ -129,31 +265,32 @@ class Button(UIComponent):
         )
         
         # Draw shadow
-        shadow_rect = scaled_rect.copy()
-        shadow_rect.x += 2
-        shadow_rect.y += 2
-        shadow_surf = pygame.Surface((shadow_rect.width, shadow_rect.height), pygame.SRCALPHA)
-        pygame.draw.rect(shadow_surf, (*DesignSystem.COLORS['shadow_light'][:3], 100),
-                        shadow_surf.get_rect(), border_radius=DesignSystem.RADIUS['md'])
-        surface.blit(shadow_surf, shadow_rect)
+        shadow_color = DesignSystem.COLORS.get('shadow_light', (0, 0, 0, 100))
+        renderer.draw_rect_with_shadow(surface, scaled_rect, bg_color,
+                                     shadow_color=shadow_color,
+                                     shadow_offset=2,
+                                     border_radius=DesignSystem.RADIUS['md'])
         
-        # Draw button
-        pygame.draw.rect(surface, bg_color, scaled_rect,
-                        border_radius=DesignSystem.RADIUS['md'])
-        pygame.draw.rect(surface, DesignSystem.COLORS['border_light'], scaled_rect,
-                        width=1, border_radius=DesignSystem.RADIUS['md'])
+        # Draw border
+        renderer.draw_rect(surface, scaled_rect,
+                         DesignSystem.COLORS['border_light'],
+                         border_radius=DesignSystem.RADIUS['md'],
+                         width=1)
         
         # Draw text - ensure contrast with background
-        font = DesignSystem.get_font('label')
         # Calculate text color based on background brightness
         bg_brightness = sum(bg_color) / 3.0
         if bg_brightness > 200:  # Light background - use dark text
             text_color = (0, 0, 0)  # Black
         else:  # Dark background - use light text
             text_color = DesignSystem.COLORS['text']
-        text_surf = font.render(self.text, True, text_color)
-        text_rect = text_surf.get_rect(center=scaled_rect.center)
-        surface.blit(text_surf, text_rect)
+        
+        # Calculate text position (centered)
+        text_width, text_height = renderer.measure_text(self.text, 'label')
+        text_x = scaled_rect.centerx - text_width // 2
+        text_y = scaled_rect.centery - text_height // 2
+        renderer.render_text(surface, self.text, (text_x, text_y),
+                           size='label', color=text_color)
 
 
 class TextInput(UIComponent):
@@ -209,53 +346,82 @@ class TextInput(UIComponent):
                 port = self.get_port('value')
                 if port:
                     port.value = self.text
+                self.mark_dirty()
             return True
         return False
         
     def update(self, dt: float):
         """Update cursor blink."""
+        super().update(dt)
         self.cursor_timer += dt
         if self.cursor_timer > 0.5:
+            was_visible = self.cursor_visible
             self.cursor_visible = not self.cursor_visible
             self.cursor_timer = 0.0
+            if was_visible != self.cursor_visible:
+                self.mark_dirty()
             
-    def draw(self, surface: pygame.Surface):
-        """Draw text input with console style."""
-        if not self.visible:
-            return
+    def _draw_self(self, surface: pygame.Surface):
+        """Draw modern flat text input - no borders, no rounded corners."""
+        renderer = self._renderer
         
-        # Draw background
-        bg_color = DesignSystem.COLORS['surface_active'] if self.active else DesignSystem.COLORS['surface_light']
-        pygame.draw.rect(surface, bg_color, self.rect,
-                       border_radius=DesignSystem.RADIUS['sm'])
+        # Modern flat design: subtle background change on focus, no border
+        if self.active:
+            # Slightly brighter background when active
+            bg_color = tuple(min(255, c + 5) for c in DesignSystem.COLORS['surface'])
+        else:
+            bg_color = DesignSystem.COLORS['surface']
         
-        # Draw border with glow when active
-        border_color = DesignSystem.COLORS['primary'] if self.active else DesignSystem.COLORS['border']
-        pygame.draw.rect(surface, border_color, self.rect,
-                       width=2 if self.active else 1, border_radius=DesignSystem.RADIUS['sm'])
+        # Draw flat background - no border, no rounded corners
+        renderer.draw_rect(surface, self.rect,
+                         bg_color,
+                         border_radius=0)  # No rounded corners
+        
+        # Optional: subtle bottom border line for modern flat design
+        if self.active:
+            # Active state: primary color accent line at bottom
+            accent_color = DesignSystem.COLORS['primary']
+            pygame.draw.line(surface, accent_color,
+                           (self.rect.x, self.rect.bottom - 1),
+                           (self.rect.right, self.rect.bottom - 1), 2)
+        else:
+            # Inactive state: subtle divider line
+            divider_color = tuple(max(0, c - 15) for c in DesignSystem.COLORS['surface'])
+            pygame.draw.line(surface, divider_color,
+                           (self.rect.x, self.rect.bottom - 1),
+                           (self.rect.right, self.rect.bottom - 1), 1)
         
         # Draw text
-        font = DesignSystem.get_font('console')
         display_text = self.text if self.text else self.placeholder
         text_color = DesignSystem.COLORS['text'] if self.text else DesignSystem.COLORS['text_tertiary']
         
         # Clip text if too long
-        text_surf = font.render(display_text, True, text_color)
-        clip_rect = self.rect.inflate(-DesignSystem.SPACING['md'], 0)
+        padding = DesignSystem.SPACING['sm']
+        clip_rect = pygame.Rect(
+            self.rect.x + padding,
+            self.rect.y,
+            self.rect.width - padding * 2,
+            self.rect.height
+        )
         old_clip = surface.get_clip()
         surface.set_clip(clip_rect)
         
-        text_y = self.rect.y + (self.rect.height - text_surf.get_height()) // 2
-        surface.blit(text_surf, (clip_rect.x, text_y))
+        text_height = renderer.measure_text(display_text, 'label')[1]
+        text_y = self.rect.y + (self.rect.height - text_height) // 2
+        renderer.render_text(surface, display_text, (clip_rect.x, text_y),
+                           size='label', color=text_color)
         
-        # Draw cursor
+        # Draw cursor - modern thin line
         if self.active and self.cursor_visible:
             cursor_text = self.text[:self.cursor_pos]
-            cursor_surf = font.render(cursor_text, True, text_color)
-            cursor_x = clip_rect.x + cursor_surf.get_width()
-            pygame.draw.line(surface, DesignSystem.COLORS['primary'],
-                           (cursor_x, self.rect.y + 4),
-                           (cursor_x, self.rect.bottom - 4), 2)
+            cursor_width = renderer.measure_text(cursor_text, 'label')[0]
+            cursor_x = clip_rect.x + cursor_width
+            if clip_rect.x <= cursor_x <= clip_rect.right:
+                # Modern thin cursor line
+                cursor_color = DesignSystem.COLORS['primary']
+                pygame.draw.line(surface, cursor_color,
+                               (cursor_x, self.rect.y + 4),
+                               (cursor_x, self.rect.bottom - 4), 1)
         
         surface.set_clip(old_clip)
 
@@ -297,20 +463,21 @@ class Checkbox(UIComponent):
                 port = self.get_port('value')
                 if port:
                     port.value = self.checked
+                self.mark_dirty()
                 return True
         return False
         
-    def draw(self, surface: pygame.Surface):
-        """Draw checkbox."""
-        if not self.visible:
-            return
-            
+    def _draw_self(self, surface: pygame.Surface):
+        """Draw checkbox using optimized renderer."""
+        renderer = self._renderer
+        
         # Draw box
         bg_color = DesignSystem.COLORS['primary'] if self.checked else DesignSystem.COLORS['surface_light']
-        pygame.draw.rect(surface, bg_color, self.rect,
-                       border_radius=DesignSystem.RADIUS['sm'])
-        pygame.draw.rect(surface, DesignSystem.COLORS['border_light'], self.rect,
-                       width=1, border_radius=DesignSystem.RADIUS['sm'])
+        renderer.draw_rect_with_border(surface, self.rect,
+                                     bg_color,
+                                     DesignSystem.COLORS['border_light'],
+                                     border_width=1,
+                                     border_radius=DesignSystem.RADIUS['sm'])
         
         # Draw checkmark
         if self.checked:
@@ -322,10 +489,12 @@ class Checkbox(UIComponent):
             pygame.draw.lines(surface, DesignSystem.COLORS['text'], False, points, 2)
         
         # Draw label
-        font = DesignSystem.get_font('label')
-        label_surf = font.render(self.text, True, DesignSystem.COLORS['text'])
-        label_y = self.rect.y + (self.rect.height - label_surf.get_height()) // 2
-        surface.blit(label_surf, (self.rect.right + DesignSystem.SPACING['sm'], label_y))
+        label_height = renderer.measure_text(self.text, 'label')[1]
+        label_y = self.rect.y + (self.rect.height - label_height) // 2
+        renderer.render_text(surface, self.text,
+                           (self.rect.right + DesignSystem.SPACING['sm'], label_y),
+                           size='label',
+                           color=DesignSystem.COLORS['text'])
 
 
 class Items(UIComponent):
@@ -345,6 +514,7 @@ class Items(UIComponent):
             self.items = [(item, "") for item in items]
         else:
             self.items = items
+        self.mark_dirty()
             
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle items list events."""
@@ -359,31 +529,31 @@ class Items(UIComponent):
                     self.selected_index = index
                     if self.on_select:
                         self.on_select(self.items[index])
+                    self.mark_dirty()
                     return True
             elif event.button == 4:  # Scroll up
                 self.scroll_y = max(0, self.scroll_y - 20)
+                self.mark_dirty()
             elif event.button == 5:  # Scroll down
                 self.scroll_y += 20
+                self.mark_dirty()
         return False
         
-    def draw(self, surface: pygame.Surface):
-        """Draw items list."""
-        if not self.visible:
-            return
-            
+    def _draw_self(self, surface: pygame.Surface):
+        """Draw items list using optimized renderer."""
+        renderer = self._renderer
+        
         # Draw background
-        pygame.draw.rect(surface, DesignSystem.COLORS['surface'], self.rect,
-                       border_radius=DesignSystem.RADIUS['md'])
-        pygame.draw.rect(surface, DesignSystem.COLORS['border'], self.rect,
-                       width=1, border_radius=DesignSystem.RADIUS['md'])
+        renderer.draw_rect_with_border(surface, self.rect,
+                                     DesignSystem.COLORS['surface'],
+                                     DesignSystem.COLORS['border'],
+                                     border_width=1,
+                                     border_radius=DesignSystem.RADIUS['md'])
         
         # Clip to item area
         clip_rect = self.rect.inflate(-DesignSystem.SPACING['sm'], -DesignSystem.SPACING['sm'])
         old_clip = surface.get_clip()
         surface.set_clip(clip_rect)
-        
-        font = DesignSystem.get_font('console')
-        small_font = DesignSystem.get_font('small')
         
         y_offset = clip_rect.y - self.scroll_y
         for i, (name, item_type) in enumerate(self.items):
@@ -397,23 +567,30 @@ class Items(UIComponent):
             
             # Highlight selected
             if i == self.selected_index:
-                pygame.draw.rect(surface, DesignSystem.COLORS['primary'], item_rect,
-                               border_radius=DesignSystem.RADIUS['sm'])
+                renderer.draw_rect(surface, item_rect,
+                                 DesignSystem.COLORS['primary'],
+                                 border_radius=DesignSystem.RADIUS['sm'])
                 text_color = DesignSystem.COLORS['text']
             else:
                 text_color = DesignSystem.COLORS['text_secondary']
             
             # Draw item name
-            name_surf = font.render(name, True, text_color)
-            surface.blit(name_surf, (item_rect.x + DesignSystem.SPACING['sm'], 
-                                   item_rect.y + (self.item_height - name_surf.get_height()) // 2))
+            name_height = renderer.measure_text(name, 'console')[1]
+            name_y = item_rect.y + (self.item_height - name_height) // 2
+            renderer.render_text(surface, name,
+                               (item_rect.x + DesignSystem.SPACING['sm'], name_y),
+                               size='console',
+                               color=text_color)
             
             # Draw item type if available
             if item_type:
-                type_surf = small_font.render(item_type, True, DesignSystem.COLORS['text_tertiary'])
-                type_y = item_rect.y + name_surf.get_height() + 2
-                if type_y + type_surf.get_height() < item_rect.bottom:
-                    surface.blit(type_surf, (item_rect.x + DesignSystem.SPACING['sm'], type_y))
+                type_height = renderer.measure_text(item_type, 'small')[1]
+                type_y = item_rect.y + name_height + 2
+                if type_y + type_height < item_rect.bottom:
+                    renderer.render_text(surface, item_type,
+                                       (item_rect.x + DesignSystem.SPACING['sm'], type_y),
+                                       size='small',
+                                       color=DesignSystem.COLORS['text_tertiary'])
         
         surface.set_clip(old_clip)
 

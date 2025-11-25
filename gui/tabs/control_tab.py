@@ -1,10 +1,11 @@
-"""Control tab implementation."""
+"""Control tab implementation with optimized rendering."""
 import pygame
 from typing import Dict, Any
 
 from .base_tab import BaseTab
 from ..components import Label, Card, TopicList, TextInput, JSONEditor, Button
 from ..design.design_system import DesignSystem
+from ..renderers.ui_renderer import get_renderer
 
 
 class ControlTab(BaseTab):
@@ -22,6 +23,7 @@ class ControlTab(BaseTab):
         """
         super().__init__(screen, screen_width, screen_height)
         self.components = components
+        self.renderer = get_renderer()
         
     def draw(self, app_state: Dict[str, Any]):
         """Draw control tab."""
@@ -90,25 +92,29 @@ class ControlTab(BaseTab):
         
         y_right += editor_card.rect.height + 20
         
-        # Action buttons
+        # Action buttons - use auto-sizing and dynamic positioning
         button_y = y_right
         button_x = x_right + 20
+        btn_gap = DesignSystem.SPACING['md']
+        current_x = button_x
         
         preset_buttons = self.components.get('preset_buttons', [])
-        for i, btn in enumerate(preset_buttons):
-            btn.rect.x = button_x + i * 140
+        for btn in preset_buttons:
+            btn.rect.x = current_x
             btn.rect.y = button_y
             btn.draw(self.screen)
+            current_x = btn.rect.right + btn_gap
         
         format_json_btn = self.components.get('format_json_btn')
         if format_json_btn:
-            format_json_btn.rect.x = button_x + len(preset_buttons) * 140
+            format_json_btn.rect.x = current_x
             format_json_btn.rect.y = button_y
             format_json_btn.draw(self.screen)
+            current_x = format_json_btn.rect.right + btn_gap
         
         send_command_btn = self.components.get('send_command_btn')
         if send_command_btn:
-            send_command_btn.rect.x = button_x + len(preset_buttons) * 140 + 150
+            send_command_btn.rect.x = current_x
             send_command_btn.rect.y = button_y
             send_command_btn.draw(self.screen)
         
@@ -120,19 +126,22 @@ class ControlTab(BaseTab):
         
         history_area = pygame.Rect(70, y + 50, history_card.rect.width - 40,
                                    history_card.rect.height - 70)
-        pygame.draw.rect(self.screen, DesignSystem.COLORS['bg'], history_area,
-                       border_radius=DesignSystem.RADIUS['sm'])
+        self.renderer.draw_rect(self.screen, history_area,
+                              DesignSystem.COLORS['bg'],
+                              border_radius=DesignSystem.RADIUS['sm'])
         
         command_history = app_state.get('command_history', [])
         if command_history:
-            font = DesignSystem.get_font('console')
             history_y = history_area.y + DesignSystem.SPACING['sm']
             for cmd in command_history[-15:]:
-                cmd_surf = font.render(cmd, True, DesignSystem.COLORS['text_console'])
-                if history_y + cmd_surf.get_height() > history_area.bottom - DesignSystem.SPACING['sm']:
+                cmd_height = self.renderer.measure_text(cmd, 'console')[1]
+                if history_y + cmd_height > history_area.bottom - DesignSystem.SPACING['sm']:
                     break
-                self.screen.blit(cmd_surf, (history_area.x + DesignSystem.SPACING['md'], history_y))
-                history_y += cmd_surf.get_height() + DesignSystem.SPACING['xs']
+                self.renderer.render_text(self.screen, cmd,
+                                        (history_area.x + DesignSystem.SPACING['md'], history_y),
+                                        size='console',
+                                        color=DesignSystem.COLORS['text_console'])
+                history_y += cmd_height + DesignSystem.SPACING['xs']
     
     def handle_event(self, event: pygame.event.Event, app_state: Dict[str, Any]) -> bool:
         """Handle control tab events."""

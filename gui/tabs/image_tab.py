@@ -1,10 +1,11 @@
-"""Image tab implementation."""
+"""Image tab implementation with optimized rendering."""
 import pygame
 from typing import Dict, Any
 
 from .base_tab import BaseTab
 from ..components import Label, ImageDisplayComponent
 from ..design.design_system import DesignSystem
+from ..renderers.ui_renderer import get_renderer
 
 # Check for optional dependencies
 try:
@@ -29,6 +30,7 @@ class ImageTab(BaseTab):
         """
         super().__init__(screen, screen_width, screen_height)
         self.components = components
+        self.renderer = get_renderer()
         
     def draw(self, app_state: Dict[str, Any]):
         """Draw image tab."""

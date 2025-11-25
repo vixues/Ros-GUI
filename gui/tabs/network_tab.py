@@ -1,10 +1,11 @@
-"""Network test tab implementation."""
+"""Network test tab implementation with optimized rendering."""
 import pygame
 from typing import Dict, Any
 
 from .base_tab import BaseTab
 from ..components import Label, Card, TextInput, Button
 from ..design.design_system import DesignSystem
+from ..renderers.ui_renderer import get_renderer
 
 
 class NetworkTab(BaseTab):
@@ -22,6 +23,7 @@ class NetworkTab(BaseTab):
         """
         super().__init__(screen, screen_width, screen_height)
         self.components = components
+        self.renderer = get_renderer()
         
     def draw(self, app_state: Dict[str, Any]):
         """Draw network test tab."""
@@ -73,19 +75,22 @@ class NetworkTab(BaseTab):
         
         result_area = pygame.Rect(70, y + 50, result_card.rect.width - 40,
                                  result_card.rect.height - 70)
-        pygame.draw.rect(self.screen, DesignSystem.COLORS['bg'], result_area,
-                       border_radius=DesignSystem.RADIUS['sm'])
+        self.renderer.draw_rect(self.screen, result_area,
+                              DesignSystem.COLORS['bg'],
+                              border_radius=DesignSystem.RADIUS['sm'])
         
         test_results = app_state.get('test_results', [])
         if test_results:
-            font = DesignSystem.get_font('console')
             result_y = result_area.y + DesignSystem.SPACING['sm']
             for result in test_results[-25:]:
-                result_surf = font.render(result, True, DesignSystem.COLORS['text_console'])
-                if result_y + result_surf.get_height() > result_area.bottom - DesignSystem.SPACING['sm']:
+                result_height = self.renderer.measure_text(result, 'console')[1]
+                if result_y + result_height > result_area.bottom - DesignSystem.SPACING['sm']:
                     break
-                self.screen.blit(result_surf, (result_area.x + DesignSystem.SPACING['md'], result_y))
-                result_y += result_surf.get_height() + DesignSystem.SPACING['xs']
+                self.renderer.render_text(self.screen, result,
+                                        (result_area.x + DesignSystem.SPACING['md'], result_y),
+                                        size='console',
+                                        color=DesignSystem.COLORS['text_console'])
+                result_y += result_height + DesignSystem.SPACING['xs']
     
     def handle_event(self, event: pygame.event.Event, app_state: Dict[str, Any]) -> bool:
         """Handle network tab events."""

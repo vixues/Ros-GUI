@@ -49,10 +49,19 @@ from gui.components import (
     MapComponent, JSONEditor, TopicList
 )
 from gui.renderers import PointCloudRenderer, HAS_POINTCLOUD
+from gui.renderers.ui_renderer import get_renderer
+from gui.renderers.realtime_optimizer import get_optimizer
 from gui.tabs import (
     ConnectionTab, StatusTab, ImageTab, ControlTab,
     PointCloudTab, View3DTab, MapTab, NetworkTab
 )
+
+try:
+    from gui.tabs import RosbagTab
+    HAS_ROSBAG_TAB = True
+except ImportError:
+    HAS_ROSBAG_TAB = False
+    RosbagTab = None
 
 
 class RosClientPygameGUI:
@@ -60,10 +69,14 @@ class RosClientPygameGUI:
     
     def __init__(self):
         pygame.init()
+        DesignSystem.init_dpi()  # Initialize DPI awareness first
         DesignSystem.init_fonts()
         
-        self.screen_width = 1400
-        self.screen_height = 900
+        # Scale screen dimensions by DPI
+        base_width = 1400
+        base_height = 900
+        self.screen_width = DesignSystem.scale_int(base_width)
+        self.screen_height = DesignSystem.scale_int(base_height)
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         pygame.display.set_caption("ROS Client - Fighter Cockpit Interface")
         
@@ -87,11 +100,15 @@ class RosClientPygameGUI:
         self.current_image = None
         
         # Tabs
-        self.tabs = ["Connection", "Status", "Image", "Control", "Point Cloud", "3D View", "Map", "Network Test"]
+        self.tabs = ["Connection", "Status", "Image", "Control", "Point Cloud", "3D View", "Map", "Network Test", "ROS Bag"]
         self.current_tab = 0
         
         # Layout manager
         self.layout = LayoutManager(self.screen_width, self.screen_height)
+        
+        # Rendering system
+        self.renderer = get_renderer()
+        self.optimizer = get_optimizer()
         
         # Application state (shared with tabs)
         self.app_state: Dict[str, Any] = {
@@ -124,6 +141,15 @@ class RosClientPygameGUI:
             MapTab(self.screen, self.screen_width, self.screen_height, self.components),
             NetworkTab(self.screen, self.screen_width, self.screen_height, self.components),
         ]
+        
+        # Add RosbagTab if available
+        if HAS_ROSBAG_TAB and RosbagTab:
+            self.tab_instances.append(
+                RosbagTab(self.screen, self.screen_width, self.screen_height, self.components)
+            )
+        else:
+            # Add placeholder if not available
+            self.tab_instances.append(None)
         
         # Performance optimization: caching and threading
         self.image_cache = None
@@ -174,11 +200,12 @@ class RosClientPygameGUI:
         self.components['drone_name_input'] = TextInput(200, 100, 200, 35, "Drone 1")
         self.components['connection_url_input'] = TextInput(420, 100, 400, 35, "ws://localhost:9090")
         self.components['use_mock_checkbox'] = Checkbox(200, 150, "Use Mock Client (Test Mode)", False)
-        self.components['add_drone_btn'] = Button(200, 200, 120, 40, "Add Drone", self.add_drone)
-        self.components['connect_btn'] = Button(330, 200, 120, 40, "Connect", self.connect)
-        self.components['disconnect_btn'] = Button(460, 200, 120, 40, "Disconnect", self.disconnect)
+        # Use auto-sizing buttons (width=None for auto-size based on text)
+        self.components['add_drone_btn'] = Button(200, 200, None, 40, "Add Drone", self.add_drone)
+        self.components['connect_btn'] = Button(0, 200, None, 40, "Connect", self.connect)
+        self.components['disconnect_btn'] = Button(0, 200, None, 40, "Disconnect", self.disconnect)
         self.components['disconnect_btn'].color = DesignSystem.COLORS['error']
-        self.components['remove_drone_btn'] = Button(590, 200, 120, 40, "Remove", self.remove_drone)
+        self.components['remove_drone_btn'] = Button(0, 200, None, 40, "Remove", self.remove_drone)
         self.components['remove_drone_btn'].color = DesignSystem.COLORS['error']
         
         # Status display
@@ -191,7 +218,7 @@ class RosClientPygameGUI:
         self.components['control_type_input'] = TextInput(770, 100, 380, 40, "controller_msgs/cmd")
         self.components['json_editor'] = JSONEditor(370, 160, 780, 340, '{\n    "cmd": 1\n}')
         
-        # Preset command buttons
+        # Preset command buttons - use auto-sizing
         preset_commands = [
             ("Takeoff", '{\n    "cmd": 1\n}'),
             ("Land", '{\n    "cmd": 2\n}'),
@@ -200,13 +227,13 @@ class RosClientPygameGUI:
         ]
         self.components['preset_buttons'] = []
         for i, (name, cmd) in enumerate(preset_commands):
-            btn = Button(370 + i * 140, 520, 130, 38, name, 
+            btn = Button(370 + i * 140, 520, None, 38, name, 
                         lambda c=cmd: self.set_preset_command(c))
             self.components['preset_buttons'].append(btn)
         
-        self.components['format_json_btn'] = Button(370, 570, 140, 42, "Format JSON", 
+        self.components['format_json_btn'] = Button(370, 570, None, 42, "Format JSON", 
                                                      self.format_json, DesignSystem.COLORS['accent'])
-        self.components['send_command_btn'] = Button(520, 570, 160, 42, "Send Command", 
+        self.components['send_command_btn'] = Button(520, 570, None, 42, "Send Command", 
                                                      self.send_control_command,
                                                      DesignSystem.COLORS['success'])
         
@@ -220,7 +247,7 @@ class RosClientPygameGUI:
         # Network test components
         self.components['test_url_input'] = TextInput(200, 100, 400, 35, "ws://localhost:9090")
         self.components['test_timeout_input'] = TextInput(200, 150, 100, 35, "5")
-        self.components['test_btn'] = Button(200, 200, 150, 40, "Test Connection", self.test_connection)
+        self.components['test_btn'] = Button(200, 200, None, 40, "Test Connection", self.test_connection)
         
     def on_topic_selected(self, topic_data):
         """Handle topic selection."""
@@ -272,6 +299,16 @@ class RosClientPygameGUI:
                             self.update_pointcloud_open3d_async()
                         elif self.current_tab == 3:  # Control tab
                             self.update_topic_list()
+                    
+                    # Check for rosbag client and update data
+                    rosbag_client = self.app_state.get('rosbag_client')
+                    if rosbag_client and rosbag_client.is_connected():
+                        # Update image from rosbag
+                        if HAS_CV2 and (self.current_tab == 1 or self.current_tab == 2):
+                            self.update_image_from_rosbag(rosbag_client)
+                        # Update point cloud from rosbag
+                        if HAS_POINTCLOUD and (self.current_tab == 1 or self.current_tab == 4):
+                            self.update_pointcloud_from_rosbag(rosbag_client)
                 except Exception as e:
                     print(f"Update error: {e}")
                 time.sleep(update_interval)
@@ -545,6 +582,12 @@ class RosClientPygameGUI:
     
     def update_pointcloud_simple(self):
         """Update point cloud display with simple rendering."""
+        # Check for rosbag point cloud first
+        rosbag_pc = self.app_state.get('rosbag_pointcloud')
+        if rosbag_pc is not None:
+            with self.pc_cache_lock:
+                self.current_point_cloud = rosbag_pc
+        
         if self.current_point_cloud is None:
             return
         
@@ -559,6 +602,45 @@ class RosClientPygameGUI:
                 with self.pc_cache_lock:
                     if self.pc_render_cache is not None:
                         self.app_state['pc_surface_simple'] = self.pc_render_cache
+    
+    def update_image_from_rosbag(self, rosbag_client):
+        """Update image from rosbag client."""
+        try:
+            image_data = rosbag_client.get_latest_image()
+            if image_data:
+                frame, timestamp = image_data
+                if frame is not None and HAS_CV2:
+                    max_width, max_height = 800, 600
+                    h, w = frame.shape[:2]
+                    scale = min(max_width / w, max_height / h)
+                    new_w, new_h = int(w * scale), int(h * scale)
+                    frame_resized = cv2.resize(frame, (new_w, new_h))
+                    frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
+                    frame_rotated = np.rot90(frame_rgb, k=3)
+                    frame_flipped = np.fliplr(frame_rotated)
+                    new_image = pygame.surfarray.make_surface(frame_flipped)
+                    
+                    with self.image_cache_lock:
+                        self.image_cache = new_image
+                        self.current_image = new_image
+                        self.app_state['current_image'] = new_image
+        except Exception as e:
+            pass
+    
+    def update_pointcloud_from_rosbag(self, rosbag_client):
+        """Update point cloud from rosbag client."""
+        try:
+            pc_data = rosbag_client.get_latest_point_cloud()
+            if pc_data:
+                points, timestamp = pc_data
+                if points is not None and len(points) > 0:
+                    with self.pc_cache_lock:
+                        self.pc_cache = points
+                        self.current_point_cloud = points
+                        self.app_state['rosbag_pointcloud'] = points
+                    self.pc_render_cache_params = None  # Invalidate cache to trigger re-render
+        except Exception as e:
+            pass
     
     def render_pointcloud_simple(self):
         """Render point cloud using professional renderer."""
@@ -848,10 +930,11 @@ class RosClientPygameGUI:
             self.tab_instances[self.current_tab].update(self.dt, self.app_state)
     
     def draw(self):
-        """Draw everything."""
+        """Draw everything using optimized rendering system."""
+        # Clear screen
         self.screen.fill(DesignSystem.COLORS['bg'])
         
-        # Draw subtle grid pattern
+        # Draw subtle grid pattern using renderer
         for y in range(0, self.screen_height, 60):
             pygame.draw.line(self.screen, DesignSystem.COLORS['bg_secondary'],
                            (0, y), (self.screen_width, y), 1)
@@ -868,10 +951,18 @@ class RosClientPygameGUI:
         if 0 <= self.current_tab < len(self.tab_instances):
             self.tab_instances[self.current_tab].draw(self.app_state)
         
+        # Update FPS counter
+        self.optimizer.update_fps()
+        
+        # Use dirty regions for partial updates if needed
+        # For now, we do full screen updates, but the infrastructure is ready
         pygame.display.flip()
+        
+        # Clear dirty regions after drawing
+        self.optimizer.clear_dirty()
     
     def draw_tab_bar(self):
-        """Draw tab bar."""
+        """Draw tab bar using optimized renderer."""
         tab_height = 45
         tab_width = self.screen_width // len(self.tabs)
         
@@ -880,19 +971,22 @@ class RosClientPygameGUI:
             is_active = (i == self.current_tab)
             
             color = DesignSystem.COLORS['surface_active'] if is_active else DesignSystem.COLORS['surface']
-            hover_color = DesignSystem.COLORS['surface_hover']
             
             tab_rect = pygame.Rect(x, 0, tab_width, tab_height)
-            pygame.draw.rect(self.screen, color, tab_rect)
+            self.renderer.draw_rect(self.screen, tab_rect, color)
             
             if not is_active:
                 pygame.draw.line(self.screen, DesignSystem.COLORS['border'],
                                (x, tab_height - 1), (x + tab_width, tab_height - 1), 1)
             
-            font = DesignSystem.get_font('label')
-            text_surf = font.render(tab_name, True, DesignSystem.COLORS['text'])
-            text_rect = text_surf.get_rect(center=(x + tab_width // 2, tab_height // 2))
-            self.screen.blit(text_surf, text_rect)
+            # Render text using optimized renderer
+            text_width, text_height = self.renderer.measure_text(tab_name, 'label')
+            text_x = x + tab_width // 2 - text_width // 2
+            text_y = tab_height // 2 - text_height // 2
+            self.renderer.render_text(self.screen, tab_name,
+                                     (text_x, text_y),
+                                     size='label',
+                                     color=DesignSystem.COLORS['text'])
     
     def run(self):
         """Main game loop."""

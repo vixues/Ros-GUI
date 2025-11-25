@@ -1,10 +1,12 @@
-"""Status tab implementation."""
+"""Status tab implementation with optimized rendering."""
 import pygame
+import math
 from typing import Dict, Any
 
 from .base_tab import BaseTab
 from ..components import Label, Card, Field, ImageDisplayComponent, PointCloudDisplayComponent
 from ..design.design_system import DesignSystem
+from ..renderers.ui_renderer import get_renderer
 
 # Check for optional dependencies
 try:
@@ -35,6 +37,7 @@ class StatusTab(BaseTab):
         """
         super().__init__(screen, screen_width, screen_height)
         self.components = components
+        self.renderer = get_renderer()
         
     def draw(self, app_state: Dict[str, Any]):
         """Draw status tab."""
@@ -193,6 +196,55 @@ class StatusTab(BaseTab):
                     angle_x, angle_y, zoom = pointcloud_display.get_camera()
                     app_state['pc_camera'] = (angle_x, angle_y, zoom)
                 return True
+            
+            # Handle mouse interactions for point cloud dragging and zooming
+            if hasattr(event, 'pos') and status_pc_card and status_pc_card.rect.collidepoint(event.pos):
+                pc_last_interaction_time = app_state.get('pc_last_interaction_time', 0.0)
+                pc_interaction_throttle = app_state.get('pc_interaction_throttle', 0.016)
+                current_time = pygame.time.get_ticks() / 1000.0
+                
+                if current_time - pc_last_interaction_time < pc_interaction_throttle:
+                    return False
+                
+                pointcloud_display = self.components.get('status_pointcloud_display')
+                if not pointcloud_display:
+                    return False
+                
+                # Convert event position to component's coordinate system
+                # Card's content area starts below the title
+                header_height = 36 if status_pc_card.title else 0
+                content_area_x = status_pc_card.rect.x
+                content_area_y = status_pc_card.rect.y + header_height
+                rel_x = event.pos[0] - content_area_x
+                rel_y = event.pos[1] - content_area_y
+                
+                if pointcloud_display.rect.collidepoint((rel_x, rel_y)):
+                    pc_camera = app_state.get('pc_camera', (0.0, 0.0, 1.0))
+                    angle_x, angle_y, zoom = pc_camera
+                    
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        if event.button == 4:  # Scroll up - zoom in
+                            zoom = min(3.0, zoom * 1.1)
+                            pointcloud_display.set_camera(angle_x, angle_y, zoom)
+                            app_state['pc_camera'] = (angle_x, angle_y, zoom)
+                            app_state['pc_last_interaction_time'] = current_time
+                            return True
+                        elif event.button == 5:  # Scroll down - zoom out
+                            zoom = max(0.1, zoom / 1.1)
+                            pointcloud_display.set_camera(angle_x, angle_y, zoom)
+                            app_state['pc_camera'] = (angle_x, angle_y, zoom)
+                            app_state['pc_last_interaction_time'] = current_time
+                            return True
+                    elif event.type == pygame.MOUSEMOTION and hasattr(event, 'buttons') and event.buttons[0]:
+                        if hasattr(event, 'rel'):
+                            angle_y += event.rel[0] * 0.01
+                            angle_x += event.rel[1] * 0.01
+                            angle_x = max(-math.pi/2, min(math.pi/2, angle_x))
+                            pointcloud_display.set_camera(angle_x, angle_y, zoom)
+                            app_state['pc_camera'] = (angle_x, angle_y, zoom)
+                            app_state['pc_last_interaction_time'] = current_time
+                            return True
+        
         return False
     
     def update(self, dt: float, app_state: Dict[str, Any]):

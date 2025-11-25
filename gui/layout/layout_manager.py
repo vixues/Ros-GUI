@@ -1,12 +1,21 @@
-"""Unified layout manager for automatic component sizing and padding calculation."""
+"""Unified layout manager for automatic component sizing and padding calculation.
+
+This module provides backward-compatible layout utilities while the new
+advanced layout system is being integrated.
+"""
 import pygame
 from typing import Optional, Tuple
 
 from ..design.design_system import DesignSystem
+from .advanced_layout import AdvancedLayoutManager, FlexContainer, LayoutConstraint
 
 
-class LayoutManager:
-    """Unified layout manager for automatic component sizing and padding calculation."""
+class LayoutManager(AdvancedLayoutManager):
+    """Unified layout manager with backward compatibility.
+    
+    This class extends AdvancedLayoutManager to provide both new flexbox
+    capabilities and legacy layout methods for compatibility.
+    """
     
     # Constants
     TAB_BAR_HEIGHT = 45
@@ -14,6 +23,7 @@ class LayoutManager:
     COMPONENT_TITLE_HEIGHT = 36
     
     def __init__(self, screen_width: int, screen_height: int):
+        super().__init__(screen_width, screen_height)
         self.screen_width = screen_width
         self.screen_height = screen_height
         

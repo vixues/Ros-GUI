@@ -1,4 +1,4 @@
-"""Point cloud tab implementation."""
+"""Point cloud tab implementation with optimized rendering."""
 import pygame
 import math
 from typing import Dict, Any
@@ -8,6 +8,7 @@ from ..components import Label, Card, PointCloudDisplayComponent
 from ..layout import LayoutManager
 from ..renderers import PointCloudRenderer, HAS_POINTCLOUD
 from ..design.design_system import DesignSystem
+from ..renderers.ui_renderer import get_renderer
 
 
 class PointCloudTab(BaseTab):
@@ -26,6 +27,7 @@ class PointCloudTab(BaseTab):
         super().__init__(screen, screen_width, screen_height)
         self.components = components
         self.layout = LayoutManager(screen_width, screen_height)
+        self.renderer = get_renderer()
         
     def draw(self, app_state: Dict[str, Any]):
         """Draw point cloud tab."""
@@ -45,9 +47,9 @@ class PointCloudTab(BaseTab):
                            'title', DesignSystem.COLORS['text'])
         title_label.draw(self.screen)
         
-        title_font = DesignSystem.get_font('title')
+        title_height = self.renderer.measure_text("Point Cloud Display", 'title')[1]
         subtitle_label = Label(header_rect.x, 
-                              header_rect.y + title_font.get_height() + DesignSystem.SPACING['sm'],
+                              header_rect.y + title_height + DesignSystem.SPACING['sm'],
                               subtitle_text, 'small', DesignSystem.COLORS['text_tertiary'])
         subtitle_label.draw(self.screen)
         
@@ -74,8 +76,9 @@ class PointCloudTab(BaseTab):
             error_label.align = 'center'
             error_label.draw(self.screen)
             
+            label_height = self.renderer.measure_text("Point cloud display requires numpy and point cloud data", 'label')[1]
             install_label = Label(error_center_x, 
-                                error_y + DesignSystem.get_font('label').get_height() + DesignSystem.SPACING['sm'],
+                                error_y + label_height + DesignSystem.SPACING['sm'],
                                 "Please ensure numpy is installed: pip install numpy",
                                 'small', DesignSystem.COLORS['text_tertiary'])
             install_label.align = 'center'
@@ -159,37 +162,43 @@ class PointCloudTab(BaseTab):
                 if pc_surface_simple is not None:
                     # Draw "Live" indicator
                     indicator_rect = pygame.Rect(indicator_abs_x, indicator_abs_y, indicator_width, indicator_height)
-                    indicator_surf = pygame.Surface((indicator_rect.width, indicator_rect.height), pygame.SRCALPHA)
-                    pygame.draw.rect(indicator_surf, (*DesignSystem.COLORS['success'], 180), 
-                                   indicator_surf.get_rect(), border_radius=DesignSystem.RADIUS['sm'])
-                    self.screen.blit(indicator_surf, indicator_rect)
+                    self.renderer.draw_rect(self.screen, indicator_rect,
+                                           DesignSystem.COLORS['success'],
+                                           border_radius=DesignSystem.RADIUS['sm'],
+                                           alpha=180)
+                    self.renderer.draw_rect(self.screen, indicator_rect,
+                                           DesignSystem.COLORS['success'],
+                                           border_radius=DesignSystem.RADIUS['sm'],
+                                           width=1)
                     
-                    pygame.draw.rect(self.screen, DesignSystem.COLORS['success'], indicator_rect,
-                                   width=1, border_radius=DesignSystem.RADIUS['sm'])
-                    
-                    font = DesignSystem.get_font('small')
                     live_text = "● LIVE"
-                    live_surf = font.render(live_text, True, DesignSystem.COLORS['text'])
-                    live_x = indicator_rect.centerx - live_surf.get_width() // 2
-                    live_y = indicator_rect.centery - live_surf.get_height() // 2
-                    self.screen.blit(live_surf, (live_x, live_y))
+                    live_width, live_height = self.renderer.measure_text(live_text, 'small')
+                    live_x = indicator_rect.centerx - live_width // 2
+                    live_y = indicator_rect.centery - live_height // 2
+                    self.renderer.render_text(self.screen, live_text,
+                                            (live_x, live_y),
+                                            size='small',
+                                            color=DesignSystem.COLORS['text'])
                 else:
                     # Draw "Waiting" indicator
                     indicator_rect = pygame.Rect(indicator_abs_x, indicator_abs_y, indicator_width, indicator_height)
-                    indicator_surf = pygame.Surface((indicator_rect.width, indicator_rect.height), pygame.SRCALPHA)
-                    pygame.draw.rect(indicator_surf, (*DesignSystem.COLORS['text_tertiary'], 180), 
-                                   indicator_surf.get_rect(), border_radius=DesignSystem.RADIUS['sm'])
-                    self.screen.blit(indicator_surf, indicator_rect)
+                    self.renderer.draw_rect(self.screen, indicator_rect,
+                                           DesignSystem.COLORS['text_tertiary'],
+                                           border_radius=DesignSystem.RADIUS['sm'],
+                                           alpha=180)
+                    self.renderer.draw_rect(self.screen, indicator_rect,
+                                           DesignSystem.COLORS['border'],
+                                           border_radius=DesignSystem.RADIUS['sm'],
+                                           width=1)
                     
-                    pygame.draw.rect(self.screen, DesignSystem.COLORS['border'], indicator_rect,
-                                   width=1, border_radius=DesignSystem.RADIUS['sm'])
-                    
-                    font = DesignSystem.get_font('small')
                     wait_text = "WAITING"
-                    wait_surf = font.render(wait_text, True, DesignSystem.COLORS['text_tertiary'])
-                    wait_x = indicator_rect.centerx - wait_surf.get_width() // 2
-                    wait_y = indicator_rect.centery - wait_surf.get_height() // 2
-                    self.screen.blit(wait_surf, (wait_x, wait_y))
+                    wait_width, wait_height = self.renderer.measure_text(wait_text, 'small')
+                    wait_x = indicator_rect.centerx - wait_width // 2
+                    wait_y = indicator_rect.centery - wait_height // 2
+                    self.renderer.render_text(self.screen, wait_text,
+                                            (wait_x, wait_y),
+                                            size='small',
+                                            color=DesignSystem.COLORS['text_tertiary'])
     
     def handle_event(self, event: pygame.event.Event, app_state: Dict[str, Any]) -> bool:
         """Handle point cloud tab events."""

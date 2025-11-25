@@ -1,10 +1,11 @@
-"""Connection tab implementation."""
+"""Connection tab implementation with optimized rendering."""
 import pygame
 from typing import Dict, Any
 
 from .base_tab import BaseTab
 from ..components import Label, Card, Button, TextInput, Checkbox
 from ..design.design_system import DesignSystem
+from ..renderers.ui_renderer import get_renderer
 
 
 class ConnectionTab(BaseTab):
@@ -22,6 +23,7 @@ class ConnectionTab(BaseTab):
         """
         super().__init__(screen, screen_width, screen_height)
         self.components = components
+        self.renderer = get_renderer()
         
     def draw(self, app_state: Dict[str, Any]):
         """Draw connection tab."""
@@ -63,18 +65,28 @@ class ConnectionTab(BaseTab):
         self.components['use_mock_checkbox'].draw(self.screen)
         card_y += 50
         
-        # Buttons
-        self.components['add_drone_btn'].rect.x = 70
-        self.components['add_drone_btn'].rect.y = card_y
+        # Buttons - use auto-sizing and dynamic positioning
+        btn_x = 70
+        btn_y = card_y
+        btn_gap = DesignSystem.SPACING['md']
+        
+        self.components['add_drone_btn'].rect.x = btn_x
+        self.components['add_drone_btn'].rect.y = btn_y
         self.components['add_drone_btn'].draw(self.screen)
-        self.components['connect_btn'].rect.x = 200
-        self.components['connect_btn'].rect.y = card_y
+        
+        btn_x = self.components['add_drone_btn'].rect.right + btn_gap
+        self.components['connect_btn'].rect.x = btn_x
+        self.components['connect_btn'].rect.y = btn_y
         self.components['connect_btn'].draw(self.screen)
-        self.components['disconnect_btn'].rect.x = 330
-        self.components['disconnect_btn'].rect.y = card_y
+        
+        btn_x = self.components['connect_btn'].rect.right + btn_gap
+        self.components['disconnect_btn'].rect.x = btn_x
+        self.components['disconnect_btn'].rect.y = btn_y
         self.components['disconnect_btn'].draw(self.screen)
-        self.components['remove_drone_btn'].rect.x = 460
-        self.components['remove_drone_btn'].rect.y = card_y
+        
+        btn_x = self.components['disconnect_btn'].rect.right + btn_gap
+        self.components['remove_drone_btn'].rect.x = btn_x
+        self.components['remove_drone_btn'].rect.y = btn_y
         self.components['remove_drone_btn'].draw(self.screen)
         
         y += settings_card.rect.height + 20
@@ -84,13 +96,13 @@ class ConnectionTab(BaseTab):
         list_card.draw(self.screen)
         
         list_area = pygame.Rect(70, y + 50, list_card.rect.width - 40, list_card.rect.height - 70)
-        pygame.draw.rect(self.screen, DesignSystem.COLORS['bg'], list_area,
-                       border_radius=DesignSystem.RADIUS['sm'])
+        self.renderer.draw_rect(self.screen, list_area,
+                               DesignSystem.COLORS['bg'],
+                               border_radius=DesignSystem.RADIUS['sm'])
         
         # Draw drone list
         drones = app_state.get('drones', {})
         current_drone_id = app_state.get('current_drone_id')
-        font = DesignSystem.get_font('label')
         list_y = list_area.y + DesignSystem.SPACING['sm']
         for i, (drone_id, drone_info) in enumerate(drones.items()):
             if list_y + 30 > list_area.bottom - DesignSystem.SPACING['sm']:
@@ -99,21 +111,25 @@ class ConnectionTab(BaseTab):
             # Highlight selected drone
             if drone_id == current_drone_id:
                 highlight_rect = pygame.Rect(list_area.x + 5, list_y - 5, list_area.width - 10, 30)
-                pygame.draw.rect(self.screen, DesignSystem.COLORS['primary'], highlight_rect,
-                               border_radius=DesignSystem.RADIUS['sm'])
+                self.renderer.draw_rect(self.screen, highlight_rect,
+                                      DesignSystem.COLORS['primary'],
+                                      border_radius=DesignSystem.RADIUS['sm'])
             
             # Drone info
             status = "Connected" if drone_info.get('is_connected') else "Disconnected"
-            status_color = DesignSystem.COLORS['success'] if drone_info.get('is_connected') else DesignSystem.COLORS['error']
             text = f"{drone_info['name']} - {drone_info['url']} [{status}]"
-            text_surf = font.render(text, True, DesignSystem.COLORS['text'])
-            self.screen.blit(text_surf, (list_area.x + DesignSystem.SPACING['md'], list_y))
+            self.renderer.render_text(self.screen, text,
+                                    (list_area.x + DesignSystem.SPACING['md'], list_y),
+                                    size='label',
+                                    color=DesignSystem.COLORS['text'])
             list_y += 35
         
         if len(drones) == 0:
-            empty_text = font.render("No drones added. Add a drone above.", True, 
-                                   DesignSystem.COLORS['text_secondary'])
-            self.screen.blit(empty_text, (list_area.x + DesignSystem.SPACING['md'], list_y))
+            empty_text = "No drones added. Add a drone above."
+            self.renderer.render_text(self.screen, empty_text,
+                                    (list_area.x + DesignSystem.SPACING['md'], list_y),
+                                    size='label',
+                                    color=DesignSystem.COLORS['text_secondary'])
         
         y += list_card.rect.height + 20
         
@@ -124,19 +140,22 @@ class ConnectionTab(BaseTab):
         
         log_area = pygame.Rect(70, y + 50, log_card.rect.width - 40, 
                               log_card.rect.height - 70)
-        pygame.draw.rect(self.screen, DesignSystem.COLORS['bg'], log_area,
-                       border_radius=DesignSystem.RADIUS['sm'])
+        self.renderer.draw_rect(self.screen, log_area,
+                              DesignSystem.COLORS['bg'],
+                              border_radius=DesignSystem.RADIUS['sm'])
         
         connection_logs = app_state.get('connection_logs', [])
         if connection_logs:
-            font = DesignSystem.get_font('console')
             log_y = log_area.y + DesignSystem.SPACING['sm']
             for log in connection_logs[-20:]:
-                log_surf = font.render(log, True, DesignSystem.COLORS['text_console'])
-                if log_y + log_surf.get_height() > log_area.bottom - DesignSystem.SPACING['sm']:
+                log_height = self.renderer.measure_text(log, 'console')[1]
+                if log_y + log_height > log_area.bottom - DesignSystem.SPACING['sm']:
                     break
-                self.screen.blit(log_surf, (log_area.x + DesignSystem.SPACING['md'], log_y))
-                log_y += log_surf.get_height() + DesignSystem.SPACING['xs']
+                self.renderer.render_text(self.screen, log,
+                                        (log_area.x + DesignSystem.SPACING['md'], log_y),
+                                        size='console',
+                                        color=DesignSystem.COLORS['text_console'])
+                log_y += log_height + DesignSystem.SPACING['xs']
     
     def handle_event(self, event: pygame.event.Event, app_state: Dict[str, Any]) -> bool:
         """Handle connection tab events."""

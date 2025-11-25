@@ -9,6 +9,13 @@ from .view_3d_tab import View3DTab
 from .map_tab import MapTab
 from .network_tab import NetworkTab
 
+try:
+    from .rosbag_tab import RosbagTab
+    HAS_ROSBAG_TAB = True
+except ImportError:
+    HAS_ROSBAG_TAB = False
+    RosbagTab = None
+
 __all__ = [
     'BaseTab',
     'ConnectionTab',
@@ -20,3 +27,5 @@ __all__ = [
     'MapTab',
     'NetworkTab',
 ]
+if HAS_ROSBAG_TAB:
+    __all__.append('RosbagTab')

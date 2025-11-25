@@ -1,10 +1,11 @@
-"""3D view tab implementation using Open3D."""
+"""3D view tab implementation using Open3D with optimized rendering."""
 import pygame
 from typing import Dict, Any
 
 from .base_tab import BaseTab
 from ..components import Label, Card
 from ..design.design_system import DesignSystem
+from ..renderers.ui_renderer import get_renderer
 
 # Check for optional dependencies
 try:
@@ -29,6 +30,7 @@ class View3DTab(BaseTab):
         """
         super().__init__(screen, screen_width, screen_height)
         self.components = components
+        self.renderer = get_renderer()
         
     def draw(self, app_state: Dict[str, Any]):
         """Draw 3D view tab."""
@@ -79,11 +81,12 @@ class View3DTab(BaseTab):
             "Scroll: Zoom in/out",
         ]
         
-        font = DesignSystem.get_font('small')
         inst_y = y + 60
         for inst in instructions:
-            inst_surf = font.render(inst, True, DesignSystem.COLORS['text'])
-            self.screen.blit(inst_surf, (self.screen_width - 200, inst_y))
+            self.renderer.render_text(self.screen, inst,
+                                    (self.screen_width - 200, inst_y),
+                                    size='small',
+                                    color=DesignSystem.COLORS['text'])
             inst_y += 20
     
     def handle_event(self, event: pygame.event.Event, app_state: Dict[str, Any]) -> bool:
