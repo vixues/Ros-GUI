@@ -1,5 +1,14 @@
 #!/usr/bin/env python
 """Main GUI application using modular architecture."""
+import sys
+import os
+from pathlib import Path
+
+# Add project root to Python path for imports
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import pygame
 import threading
 import json
@@ -32,15 +41,15 @@ except ImportError:
     HAS_OPEN3D = False
     print("Warning: open3d not available. Advanced 3D display will be disabled.")
 
-from .design.design_system import DesignSystem
-from .layout.layout_manager import LayoutManager
-from .components import (
+from gui.design.design_system import DesignSystem
+from gui.layout.layout_manager import LayoutManager
+from gui.components import (
     Button, TextInput, Checkbox, Label, Card, Field,
     ImageDisplayComponent, PointCloudDisplayComponent,
     MapComponent, JSONEditor, TopicList
 )
-from .renderers import PointCloudRenderer, HAS_POINTCLOUD
-from .tabs import (
+from gui.renderers import PointCloudRenderer, HAS_POINTCLOUD
+from gui.tabs import (
     ConnectionTab, StatusTab, ImageTab, ControlTab,
     PointCloudTab, View3DTab, MapTab, NetworkTab
 )
