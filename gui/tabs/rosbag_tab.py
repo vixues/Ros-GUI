@@ -189,15 +189,18 @@ class RosbagTab(BaseTab):
         progress_bar_width = controls_content.width - DesignSystem.SPACING['sm'] * 2
         progress_bar_height = 24
         
-        # Draw progress bar background
+        # Draw progress bar background - modern flat style
         progress_rect = pygame.Rect(progress_bar_x, progress_bar_y, progress_bar_width, progress_bar_height)
-        self.renderer.draw_rect_with_border(self.screen, progress_rect,
-                                          DesignSystem.COLORS['surface'],
-                                          DesignSystem.COLORS['border'],
-                                          border_width=1,
-                                          border_radius=DesignSystem.RADIUS['sm'])
+        self.renderer.draw_rect(self.screen, progress_rect,
+                              DesignSystem.COLORS['surface'],
+                              border_radius=0)  # No rounded corners
+        # Subtle divider line
+        divider_color = tuple(max(0, c - 15) for c in DesignSystem.COLORS['surface'])
+        pygame.draw.line(self.screen, divider_color,
+                       (progress_rect.x, progress_rect.bottom - 1),
+                       (progress_rect.right, progress_rect.bottom - 1), 1)
         
-        # Draw progress fill
+        # Draw progress fill - modern flat style
         if self.rosbag_client:
             progress = self.rosbag_client.get_progress()
             fill_width = int(progress_bar_width * progress)
@@ -205,7 +208,7 @@ class RosbagTab(BaseTab):
                 fill_rect = pygame.Rect(progress_bar_x, progress_bar_y, fill_width, progress_bar_height)
                 self.renderer.draw_rect(self.screen, fill_rect,
                                       DesignSystem.COLORS['playback_active'],
-                                      border_radius=DesignSystem.RADIUS['sm'])
+                                      border_radius=0)  # No rounded corners
         
         # Draw time info - below progress bar
         time_y = progress_bar_y + progress_bar_height + DesignSystem.SPACING['sm']

@@ -98,7 +98,7 @@ class ConnectionTab(BaseTab):
         list_area = pygame.Rect(70, y + 50, list_card.rect.width - 40, list_card.rect.height - 70)
         self.renderer.draw_rect(self.screen, list_area,
                                DesignSystem.COLORS['bg'],
-                               border_radius=DesignSystem.RADIUS['sm'])
+                               border_radius=0)  # No rounded corners
         
         # Draw drone list
         drones = app_state.get('drones', {})
@@ -108,12 +108,12 @@ class ConnectionTab(BaseTab):
             if list_y + 30 > list_area.bottom - DesignSystem.SPACING['sm']:
                 break
             
-            # Highlight selected drone
+            # Highlight selected drone - modern flat style
             if drone_id == current_drone_id:
                 highlight_rect = pygame.Rect(list_area.x + 5, list_y - 5, list_area.width - 10, 30)
                 self.renderer.draw_rect(self.screen, highlight_rect,
                                       DesignSystem.COLORS['primary'],
-                                      border_radius=DesignSystem.RADIUS['sm'])
+                                      border_radius=0)  # No rounded corners
             
             # Drone info
             status = "Connected" if drone_info.get('is_connected') else "Disconnected"
@@ -142,7 +142,7 @@ class ConnectionTab(BaseTab):
                               log_card.rect.height - 70)
         self.renderer.draw_rect(self.screen, log_area,
                               DesignSystem.COLORS['bg'],
-                              border_radius=DesignSystem.RADIUS['sm'])
+                              border_radius=0)  # No rounded corners
         
         connection_logs = app_state.get('connection_logs', [])
         if connection_logs:

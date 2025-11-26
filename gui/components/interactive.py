@@ -244,7 +244,7 @@ class Button(UIComponent):
             self.mark_dirty()
             
     def _draw_self(self, surface: pygame.Surface):
-        """Draw button with fighter cockpit style using optimized renderer."""
+        """Draw modern flat button - no borders, no rounded corners."""
         renderer = self._renderer
         
         # Calculate color based on state
@@ -264,18 +264,16 @@ class Button(UIComponent):
             self.rect.height * scale
         )
         
-        # Draw shadow
-        shadow_color = DesignSystem.COLORS.get('shadow_light', (0, 0, 0, 100))
-        renderer.draw_rect_with_shadow(surface, scaled_rect, bg_color,
-                                     shadow_color=shadow_color,
-                                     shadow_offset=2,
-                                     border_radius=DesignSystem.RADIUS['md'])
+        # Draw flat background - no shadow, no border, no rounded corners
+        renderer.draw_rect(surface, scaled_rect, bg_color,
+                         border_radius=0)  # No rounded corners
         
-        # Draw border
-        renderer.draw_rect(surface, scaled_rect,
-                         DesignSystem.COLORS['border_light'],
-                         border_radius=DesignSystem.RADIUS['md'],
-                         width=1)
+        # Optional: subtle bottom accent line when hovered (modern flat design)
+        if self.hovered and not self.pressed:
+            accent_color = renderer.lighten_color(self.color, 0.2)
+            pygame.draw.line(surface, accent_color,
+                           (scaled_rect.x, scaled_rect.bottom - 1),
+                           (scaled_rect.right, scaled_rect.bottom - 1), 2)
         
         # Draw text - ensure contrast with background
         # Calculate text color based on background brightness
@@ -471,13 +469,16 @@ class Checkbox(UIComponent):
         """Draw checkbox using optimized renderer."""
         renderer = self._renderer
         
-        # Draw box
+        # Draw modern flat checkbox - no border, no rounded corners
         bg_color = DesignSystem.COLORS['primary'] if self.checked else DesignSystem.COLORS['surface_light']
-        renderer.draw_rect_with_border(surface, self.rect,
-                                     bg_color,
-                                     DesignSystem.COLORS['border_light'],
-                                     border_width=1,
-                                     border_radius=DesignSystem.RADIUS['sm'])
+        renderer.draw_rect(surface, self.rect,
+                         bg_color,
+                         border_radius=0)  # No rounded corners
+        
+        # Optional: subtle border line when not checked
+        if not self.checked:
+            border_color = tuple(max(0, c - 20) for c in DesignSystem.COLORS['surface_light'])
+            pygame.draw.rect(surface, border_color, self.rect, width=1)
         
         # Draw checkmark
         if self.checked:
@@ -543,12 +544,10 @@ class Items(UIComponent):
         """Draw items list using optimized renderer."""
         renderer = self._renderer
         
-        # Draw background
-        renderer.draw_rect_with_border(surface, self.rect,
-                                     DesignSystem.COLORS['surface'],
-                                     DesignSystem.COLORS['border'],
-                                     border_width=1,
-                                     border_radius=DesignSystem.RADIUS['md'])
+        # Draw modern flat background - no border, no rounded corners
+        renderer.draw_rect(surface, self.rect,
+                         DesignSystem.COLORS['surface'],
+                         border_radius=0)  # No rounded corners
         
         # Clip to item area
         clip_rect = self.rect.inflate(-DesignSystem.SPACING['sm'], -DesignSystem.SPACING['sm'])
@@ -565,13 +564,20 @@ class Items(UIComponent):
                 
             item_rect = pygame.Rect(clip_rect.x, item_y, clip_rect.width, self.item_height)
             
-            # Highlight selected
+            # Highlight selected - modern flat style
             if i == self.selected_index:
+                # Selected: primary color background, no rounded corners
                 renderer.draw_rect(surface, item_rect,
                                  DesignSystem.COLORS['primary'],
-                                 border_radius=DesignSystem.RADIUS['sm'])
+                                 border_radius=0)  # No rounded corners
                 text_color = DesignSystem.COLORS['text']
             else:
+                # Optional: subtle hover effect on even rows
+                if i % 2 == 0:
+                    hover_bg = tuple(max(0, c - 3) for c in DesignSystem.COLORS['surface'])
+                    renderer.draw_rect(surface, item_rect,
+                                     hover_bg,
+                                     border_radius=0)
                 text_color = DesignSystem.COLORS['text_secondary']
             
             # Draw item name

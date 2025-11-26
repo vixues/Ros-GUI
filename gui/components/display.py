@@ -63,22 +63,20 @@ class ImageDisplayComponent(UIComponent):
         """Draw image display component using optimized renderer."""
         renderer = self._renderer
         
-        # Draw background with border
-        renderer.draw_rect_with_border(surface, self.rect,
-                                     DesignSystem.COLORS['surface'],
-                                     DesignSystem.COLORS['border'],
-                                     border_width=1,
-                                     border_radius=DesignSystem.RADIUS['lg'])
+        # Draw modern flat background - no border, no rounded corners
+        renderer.draw_rect(surface, self.rect,
+                         DesignSystem.COLORS['surface'],
+                         border_radius=0)  # No rounded corners
         
-        # Draw title if present
+        # Draw title if present - modern flat style
         header_height = 36 if self.title else 0
         if self.title:
             header_rect = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, header_height)
-            renderer.draw_rect_with_border(surface, header_rect,
-                                         DesignSystem.COLORS['surface_light'],
-                                         DesignSystem.COLORS['border_light'],
-                                         border_width=1,
-                                         border_radius=DesignSystem.RADIUS['lg'])
+            # Slightly darker background for header
+            header_bg = tuple(max(0, c - 8) for c in DesignSystem.COLORS['surface'])
+            renderer.draw_rect(surface, header_rect,
+                             header_bg,
+                             border_radius=0)  # No rounded corners
             
             title_height = renderer.measure_text(self.title, 'label')[1]
             title_y = header_rect.y + (header_rect.height - title_height) // 2
@@ -380,17 +378,24 @@ class PointCloudDisplayComponent(UIComponent):
             
         cube_rect = self._get_cube_rect()
         
-        # Draw cube background with hover effect
+        # Draw cube background with hover effect - modern flat style
         renderer = self._renderer
         bg_color = DesignSystem.COLORS['surface_active'] if self.cube_hovered_face else DesignSystem.COLORS['surface_light']
-        border_color = DesignSystem.COLORS['primary'] if self.cube_hovered_face else DesignSystem.COLORS['border']
-        border_width = 2 if self.cube_hovered_face else 1
         
-        renderer.draw_rect_with_border(surface, cube_rect,
-                                     bg_color,
-                                     border_color,
-                                     border_width=border_width,
-                                     border_radius=DesignSystem.RADIUS['sm'])
+        # Modern flat design - no border, no rounded corners
+        renderer.draw_rect(surface, cube_rect,
+                         bg_color,
+                         border_radius=0)  # No rounded corners
+        
+        # Optional: subtle accent line when hovered
+        if self.cube_hovered_face:
+            accent_color = DesignSystem.COLORS['primary']
+            pygame.draw.line(surface, accent_color,
+                           (cube_rect.x, cube_rect.y),
+                           (cube_rect.right, cube_rect.y), 2)
+            pygame.draw.line(surface, accent_color,
+                           (cube_rect.x, cube_rect.bottom - 1),
+                           (cube_rect.right, cube_rect.bottom - 1), 2)
         
         # Get cube geometry
         rotated_vertices, rotated_faces, _ = self._get_cube_geometry()
@@ -638,23 +643,21 @@ class PointCloudDisplayComponent(UIComponent):
         """Draw point cloud display component with enhanced visuals using optimized renderer."""
         renderer = self._renderer
         
-        # Draw background with border
-        renderer.draw_rect_with_border(surface, self.rect,
-                                     DesignSystem.COLORS['bg_panel'],
-                                     DesignSystem.COLORS['border'],
-                                     border_width=1,
-                                     border_radius=DesignSystem.RADIUS['md'])
+        # Draw modern flat background - no border, no rounded corners
+        renderer.draw_rect(surface, self.rect,
+                         DesignSystem.COLORS['bg_panel'],
+                         border_radius=0)  # No rounded corners
         
-        # Draw title if present
+        # Draw title if present - modern flat style
         # Note: Card sets child.rect to (0,0) during draw, so use relative coordinates
         header_height = 36 if self.title else 0
         if self.title:
             header_rect = pygame.Rect(0, 0, self.rect.width, header_height)
-            renderer.draw_rect_with_border(surface, header_rect,
-                                         DesignSystem.COLORS['surface_light'],
-                                         DesignSystem.COLORS['border_light'],
-                                         border_width=1,
-                                         border_radius=DesignSystem.RADIUS['md'])
+            # Slightly darker background for header
+            header_bg = tuple(max(0, c - 8) for c in DesignSystem.COLORS['bg_panel'])
+            renderer.draw_rect(surface, header_rect,
+                             header_bg,
+                             border_radius=0)  # No rounded corners
             
             title_height = renderer.measure_text(self.title, 'label')[1]
             title_y = header_rect.y + (header_rect.height - title_height) // 2

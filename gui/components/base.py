@@ -305,36 +305,35 @@ class UIComponent:
 
 
 class Panel(UIComponent):
-    """Panel container component with fighter cockpit styling."""
+    """Modern panel container component with flat design - no borders, no rounded corners."""
     
     def __init__(self, x: int, y: int, width: int, height: int, 
-                 title: str = "", show_border: bool = True):
+                 title: str = "", show_border: bool = False):
         super().__init__(x, y, width, height)
         self.title = title
-        self.show_border = show_border
+        self.show_border = show_border  # Optional subtle border line
         
     def _draw_self(self, surface: pygame.Surface):
-        """Draw panel with fighter cockpit style using optimized renderer."""
+        """Draw modern flat panel - no rounded corners."""
         renderer = self._renderer
         
-        # Draw panel background
+        # Draw panel background - flat, no rounded corners
         renderer.draw_rect(surface, self.rect, 
                           DesignSystem.COLORS['bg_panel'],
-                          border_radius=DesignSystem.RADIUS['md'])
+                          border_radius=0)  # No rounded corners
         
-        # Draw border with glow effect
+        # Optional subtle border line (modern flat design)
         if self.show_border:
-            # Outer border
-            renderer.draw_rect(surface, self.rect,
-                             DesignSystem.COLORS['border'],
-                             border_radius=DesignSystem.RADIUS['md'],
-                             width=1)
-            # Inner glow line
-            inner_rect = self.rect.inflate(-2, -2)
-            renderer.draw_rect(surface, inner_rect,
-                             DesignSystem.COLORS['border_light'],
-                             border_radius=DesignSystem.RADIUS['sm'],
-                             width=1)
+            # Single subtle line at edges
+            divider_color = tuple(max(0, c - 10) for c in DesignSystem.COLORS['bg_panel'])
+            # Top line
+            pygame.draw.line(surface, divider_color,
+                           (self.rect.x, self.rect.y),
+                           (self.rect.right, self.rect.y), 1)
+            # Bottom line
+            pygame.draw.line(surface, divider_color,
+                           (self.rect.x, self.rect.bottom - 1),
+                           (self.rect.right, self.rect.bottom - 1), 1)
         
         # Draw title if present
         if self.title:

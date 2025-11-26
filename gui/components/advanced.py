@@ -50,10 +50,10 @@ class MapComponent(UIComponent):
             self.rect.height - header_height - padding * 2
         )
         
-        # Draw map background
+        # Draw modern flat map background - no rounded corners
         renderer.draw_rect(surface, map_rect,
                          DesignSystem.COLORS['bg_secondary'],
-                         border_radius=DesignSystem.RADIUS['sm'])
+                         border_radius=0)  # No rounded corners
         
         # Collect all drone positions
         drone_positions = []
@@ -148,13 +148,15 @@ class MapComponent(UIComponent):
                 text_x = x - text_width // 2
                 text_y = y + 15
                 
-                # Draw background for text
+                # Draw modern flat background for text - no border, no rounded corners
                 bg_rect = pygame.Rect(text_x - 5, text_y - 2, text_width + 10, text_height + 4)
-                renderer.draw_rect_with_border(surface, bg_rect,
-                                             DesignSystem.COLORS['bg'],
-                                             color,
-                                             border_width=1,
-                                             border_radius=DesignSystem.RADIUS['sm'])
+                renderer.draw_rect(surface, bg_rect,
+                                 DesignSystem.COLORS['bg'],
+                                 border_radius=0)  # No rounded corners
+                # Optional: subtle accent line at bottom
+                pygame.draw.line(surface, color,
+                               (bg_rect.x, bg_rect.bottom - 1),
+                               (bg_rect.right, bg_rect.bottom - 1), 1)
                 renderer.render_text(surface, info_text,
                                    (text_x, text_y),
                                    size='small',
@@ -511,18 +513,24 @@ class JSONEditor(UIComponent):
         border_color = DesignSystem.COLORS['primary'] if self.active else DesignSystem.COLORS['border']
         border_width = 2 if self.active else 1
         
-        renderer.draw_rect_with_border(surface, self.rect,
-                                     bg_color,
-                                     border_color,
-                                     border_width=border_width,
-                                     border_radius=DesignSystem.RADIUS['md'])
+        # Draw modern flat background - no border, no rounded corners
+        renderer.draw_rect(surface, self.rect,
+                         bg_color,
+                         border_radius=0)  # No rounded corners
         
-        # Draw line numbers
+        # Optional: subtle accent line when focused
+        if self.active:
+            accent_color = DesignSystem.COLORS['primary']
+            pygame.draw.line(surface, accent_color,
+                           (self.rect.x, self.rect.bottom - 1),
+                           (self.rect.right, self.rect.bottom - 1), 2)
+        
+        # Draw line numbers - modern flat style
         line_num_rect = pygame.Rect(self.rect.x + 4, self.rect.y + 4, 
                                    self.line_number_width, self.rect.height - 8)
         renderer.draw_rect(surface, line_num_rect,
                          DesignSystem.COLORS['bg'],
-                         border_radius=DesignSystem.RADIUS['sm'])
+                         border_radius=0)  # No rounded corners
         
         # Clip to text area
         text_rect = pygame.Rect(
@@ -570,7 +578,7 @@ class JSONEditor(UIComponent):
                     sel_rect = pygame.Rect(sel_x1, line_y, sel_x2 - sel_x1, self.line_height)
                     renderer.draw_rect(surface, sel_rect,
                                      DesignSystem.COLORS['primary'],
-                                     border_radius=2)
+                                     border_radius=0)  # No rounded corners
         
         # Use font renderer for text rendering (but need character-by-character for syntax highlighting)
         font = renderer.font_renderer.get_font('console')

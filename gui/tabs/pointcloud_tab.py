@@ -164,12 +164,12 @@ class PointCloudTab(BaseTab):
                     indicator_rect = pygame.Rect(indicator_abs_x, indicator_abs_y, indicator_width, indicator_height)
                     self.renderer.draw_rect(self.screen, indicator_rect,
                                            DesignSystem.COLORS['success'],
-                                           border_radius=DesignSystem.RADIUS['sm'],
+                                           border_radius=0,  # No rounded corners
                                            alpha=180)
-                    self.renderer.draw_rect(self.screen, indicator_rect,
-                                           DesignSystem.COLORS['success'],
-                                           border_radius=DesignSystem.RADIUS['sm'],
-                                           width=1)
+                    # Optional: subtle accent line
+                    pygame.draw.line(self.screen, DesignSystem.COLORS['success'],
+                                   (indicator_rect.x, indicator_rect.bottom - 1),
+                                   (indicator_rect.right, indicator_rect.bottom - 1), 1)
                     
                     live_text = "● LIVE"
                     live_width, live_height = self.renderer.measure_text(live_text, 'small')
@@ -184,12 +184,13 @@ class PointCloudTab(BaseTab):
                     indicator_rect = pygame.Rect(indicator_abs_x, indicator_abs_y, indicator_width, indicator_height)
                     self.renderer.draw_rect(self.screen, indicator_rect,
                                            DesignSystem.COLORS['text_tertiary'],
-                                           border_radius=DesignSystem.RADIUS['sm'],
+                                           border_radius=0,  # No rounded corners
                                            alpha=180)
-                    self.renderer.draw_rect(self.screen, indicator_rect,
-                                           DesignSystem.COLORS['border'],
-                                           border_radius=DesignSystem.RADIUS['sm'],
-                                           width=1)
+                    # Optional: subtle divider line
+                    divider_color = tuple(max(0, c - 10) for c in DesignSystem.COLORS['text_tertiary'])
+                    pygame.draw.line(self.screen, divider_color,
+                                   (indicator_rect.x, indicator_rect.bottom - 1),
+                                   (indicator_rect.right, indicator_rect.bottom - 1), 1)
                     
                     wait_text = "WAITING"
                     wait_width, wait_height = self.renderer.measure_text(wait_text, 'small')

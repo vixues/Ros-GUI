@@ -128,7 +128,7 @@ class ControlTab(BaseTab):
                                    history_card.rect.height - 70)
         self.renderer.draw_rect(self.screen, history_area,
                               DesignSystem.COLORS['bg'],
-                              border_radius=DesignSystem.RADIUS['sm'])
+                              border_radius=0)  # No rounded corners
         
         command_history = app_state.get('command_history', [])
         if command_history:

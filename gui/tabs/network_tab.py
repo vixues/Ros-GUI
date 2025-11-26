@@ -77,7 +77,7 @@ class NetworkTab(BaseTab):
                                  result_card.rect.height - 70)
         self.renderer.draw_rect(self.screen, result_area,
                               DesignSystem.COLORS['bg'],
-                              border_radius=DesignSystem.RADIUS['sm'])
+                              border_radius=0)  # No rounded corners
         
         test_results = app_state.get('test_results', [])
         if test_results:
