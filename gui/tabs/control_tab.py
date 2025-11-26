@@ -34,7 +34,7 @@ class ControlTab(BaseTab):
         y += 50
         
         # Left panel: Topic list
-        topic_card = Card(50, y, 320, 550, "Available Topics")
+        topic_card = Card(50, y, 470, 550, "Available Topics")
         topic_card.draw(self.screen)
         
         topic_list = self.components.get('topic_list')
@@ -150,7 +150,7 @@ class ControlTab(BaseTab):
         y = tab_height + DesignSystem.SPACING['lg']
         y += 50  # Title height
         
-        x_right = 50 + 320 + 20  # topic_card width is 320
+        x_right = 50 + 470 + 20  # topic_card width is 470
         y_right = y
         
         # Calculate positions same as in draw

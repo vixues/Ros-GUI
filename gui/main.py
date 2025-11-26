@@ -212,7 +212,7 @@ class RosClientPygameGUI:
         self.components['status_fields'] = {}
         
         # Control tab components
-        self.components['topic_list'] = TopicList(50, 100, 300, 500)
+        self.components['topic_list'] = TopicList(50, 100, 450, 500)
         self.components['topic_list'].on_select = self.on_topic_selected
         self.components['control_topic_input'] = TextInput(370, 100, 380, 40, "/control")
         self.components['control_type_input'] = TextInput(770, 100, 380, 40, "controller_msgs/cmd")
@@ -244,10 +244,42 @@ class RosClientPygameGUI:
         self.components['pointcloud_display'] = PointCloudDisplayComponent(0, 0, 0, 0, "Point Cloud Stream")
         self.components['map_display'] = MapComponent(0, 0, 0, 0, "")
         
-        # Network test components
-        self.components['test_url_input'] = TextInput(200, 100, 400, 35, "ws://localhost:9090")
-        self.components['test_timeout_input'] = TextInput(200, 150, 100, 35, "5")
-        self.components['test_btn'] = Button(200, 200, None, 40, "Test Connection", self.test_connection)
+        # Network test components - Quick Test
+        self.components['network_host_input'] = TextInput(0, 0, 300, 35, "localhost")
+        self.components['ping_btn'] = Button(0, 0, None, 35, "Ping", self.ping_test)
+        self.components['ws_test_btn'] = Button(0, 0, None, 35, "Test WebSocket", self.test_websocket)
+        self.components['ros_test_btn'] = Button(0, 0, None, 35, "Test ROS", self.test_ros_quick)
+        
+        # Port Scan components
+        self.components['scan_host_input'] = TextInput(0, 0, 200, 35, "localhost")
+        self.components['port_range_input'] = TextInput(0, 0, 200, 35, "22,80,443,9090")
+        self.components['tcp_checkbox'] = Checkbox(0, 0, "TCP", True)
+        self.components['udp_checkbox'] = Checkbox(0, 0, "UDP", False)
+        self.components['scan_btn'] = Button(0, 0, None, 35, "Scan Ports", self.scan_ports)
+        
+        # Device Discovery components
+        self.components['network_input'] = TextInput(0, 0, 200, 35, "192.168.1.0/24")
+        self.components['discover_btn'] = Button(0, 0, None, 35, "Discover Devices", self.discover_devices)
+        
+        # ROS Discovery components
+        self.components['ros_network_input'] = TextInput(0, 0, 200, 35, "192.168.1.0/24")
+        self.components['auto_detect_network_btn'] = Button(0, 0, None, 30, "Auto Detect", self.auto_detect_network)
+        self.components['discover_ros_btn'] = Button(0, 0, None, 35, "Discover ROS Devices", self.discover_ros_devices)
+        self.components['test_all_ros_btn'] = Button(0, 0, None, 35, "Test All ROS", self.test_all_ros_devices)
+        
+        # ROS Test components
+        self.components['ros_url_input'] = TextInput(0, 0, 400, 35, "ws://localhost:9090")
+        self.components['ros_connection_btn'] = Button(0, 0, None, 35, "Test ROS Connection", self.test_ros_connection)
+        
+        # Results
+        self.components['save_results_btn'] = Button(0, 0, None, 30, "Save Results", self.save_network_results)
+        self.components['save_ros_devices_btn'] = Button(0, 0, None, 30, "Save ROS Devices", self.save_ros_devices)
+        self.components['save_ros_devices_btn'] = Button(0, 0, None, 30, "Save ROS Devices", self.save_ros_devices)
+        
+        # Legacy components (for backward compatibility)
+        self.components['test_url_input'] = self.components['ros_url_input']
+        self.components['test_timeout_input'] = TextInput(0, 0, 100, 35, "5")
+        self.components['test_btn'] = self.components['ros_connection_btn']
         
     def on_topic_selected(self, topic_data):
         """Handle topic selection."""
@@ -800,6 +832,7 @@ class RosClientPygameGUI:
         try:
             from rosclient.clients.config import DEFAULT_TOPICS
             topics = [(topic.name, topic.type) for topic in DEFAULT_TOPICS.values()]
+            topic_list = self.components['topic_list']
             
             if self.current_drone_id is not None:
                 drone_info = self.drones.get(self.current_drone_id)
@@ -813,9 +846,18 @@ class RosClientPygameGUI:
                             for topic_name in client._ts_mgr._topics.keys():
                                 if not any(t[0] == topic_name for t in topics):
                                     topics.append((topic_name, ""))
+                            
+                            # Set topic info for enhanced display
+                            for topic_name, topic_data in client._ts_mgr._topics.items():
+                                topic_info = {
+                                    'subscribed': hasattr(topic_data, 'subscribed') and topic_data.subscribed,
+                                    'active': True,  # Topic exists in manager
+                                    'message_count': getattr(topic_data, 'message_count', 0),
+                                }
+                                topic_list.set_topic_info(topic_name, topic_info)
             
             topics = sorted(topics, key=lambda x: x[0])
-            self.components['topic_list'].set_items(topics)
+            topic_list.set_items(topics)
         except Exception as e:
             self.components['topic_list'].set_items([])
     
@@ -855,9 +897,9 @@ class RosClientPygameGUI:
             self.add_log(f"Error sending command: {e}")
     
     def test_connection(self):
-        """Test network connection."""
+        """Test network connection (legacy method)."""
         url = self.components['test_url_input'].text.strip()
-        timeout_str = self.components['test_timeout_input'].text.strip()
+        timeout_str = self.components.get('test_timeout_input', TextInput(0, 0, 100, 35, "5")).text.strip()
         
         try:
             timeout = float(timeout_str)
@@ -883,6 +925,226 @@ class RosClientPygameGUI:
                 self.app_state['test_results'].pop(0)
         
         threading.Thread(target=test_thread, daemon=True).start()
+    
+    def ping_test(self):
+        """Ping test handler."""
+        host = self.components['network_host_input'].text.strip()
+        if not host:
+            self.add_log("Error: Please enter a host to ping")
+            return
+        
+        # Get network tab and call ping method
+        if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+            network_tab = self.tab_instances[7]  # Network tab index
+            if hasattr(network_tab, 'ping_test'):
+                network_tab.ping_test(host)
+            else:
+                self.add_log("Network tab method not available")
+        else:
+            self.add_log("Network tab not initialized")
+    
+    def test_websocket(self):
+        """WebSocket test handler."""
+        host = self.components['network_host_input'].text.strip()
+        if not host:
+            self.add_log("Error: Please enter a host")
+            return
+        
+        # Construct WebSocket URL if not already
+        if not host.startswith(("ws://", "wss://")):
+            url = f"ws://{host}"
+        else:
+            url = host
+        
+        if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+            network_tab = self.tab_instances[7]
+            if hasattr(network_tab, 'test_websocket'):
+                network_tab.test_websocket(url)
+            else:
+                self.add_log("Network tab method not available")
+        else:
+            self.add_log("Network tab not initialized")
+    
+    def test_ros_quick(self):
+        """Quick ROS test handler."""
+        host = self.components['network_host_input'].text.strip()
+        if not host:
+            self.add_log("Error: Please enter a host")
+            return
+        
+        if not host.startswith(("ws://", "wss://")):
+            url = f"ws://{host}:9090"
+        else:
+            url = host
+        
+        if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+            network_tab = self.tab_instances[7]
+            if hasattr(network_tab, 'test_ros_connection'):
+                network_tab.test_ros_connection(url)
+            else:
+                self.add_log("Network tab method not available")
+        else:
+            self.add_log("Network tab not initialized")
+    
+    def scan_ports(self):
+        """Port scan handler."""
+        host = self.components['scan_host_input'].text.strip()
+        port_range_str = self.components['port_range_input'].text.strip()
+        
+        if not host:
+            self.add_log("Error: Please enter a host")
+            return
+        
+        # Parse port range
+        ports = []
+        try:
+            for port_str in port_range_str.split(','):
+                port_str = port_str.strip()
+                if '-' in port_str:
+                    start, end = map(int, port_str.split('-'))
+                    ports.extend(range(start, end + 1))
+                else:
+                    ports.append(int(port_str))
+        except ValueError:
+            self.add_log("Error: Invalid port range format")
+            return
+        
+        # Determine protocol
+        protocol = "tcp"
+        if self.components['udp_checkbox'].checked and not self.components['tcp_checkbox'].checked:
+            protocol = "udp"
+        
+        if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+            network_tab = self.tab_instances[7]
+            if hasattr(network_tab, 'port_scan'):
+                network_tab.port_scan(host, ports, protocol)
+            else:
+                self.add_log("Network tab method not available")
+        else:
+            self.add_log("Network tab not initialized")
+    
+    def discover_devices(self):
+        """Device discovery handler."""
+        network = self.components['network_input'].text.strip()
+        if not network:
+            self.add_log("Error: Please enter a network range")
+            return
+        
+        if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+            network_tab = self.tab_instances[7]
+            if hasattr(network_tab, 'device_discovery'):
+                network_tab.device_discovery(network)
+            else:
+                self.add_log("Network tab method not available")
+        else:
+            self.add_log("Network tab not initialized")
+    
+    def auto_detect_network(self):
+        """Auto-detect local network."""
+        if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+            network_tab = self.tab_instances[7]
+            if hasattr(network_tab, 'get_local_network'):
+                local_network = network_tab.get_local_network()
+                self.components['ros_network_input'].text = local_network
+                self.add_log(f"Auto-detected network: {local_network}")
+            else:
+                self.components['ros_network_input'].text = "192.168.1.0/24"
+        else:
+            self.components['ros_network_input'].text = "192.168.1.0/24"
+    
+    def discover_ros_devices(self):
+        """ROS device discovery handler."""
+        network = self.components['ros_network_input'].text.strip()
+        if not network:
+            self.add_log("Error: Please enter a network range")
+            return
+        
+        if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+            network_tab = self.tab_instances[7]
+            if hasattr(network_tab, 'discover_ros_devices'):
+                network_tab.discover_ros_devices(network)
+            else:
+                self.add_log("Network tab method not available")
+        else:
+            self.add_log("Network tab not initialized")
+    
+    def test_all_ros_devices(self):
+        """Test all discovered ROS devices."""
+        if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+            network_tab = self.tab_instances[7]
+            if hasattr(network_tab, 'test_all_ros_devices'):
+                network_tab.test_all_ros_devices()
+            else:
+                self.add_log("Network tab method not available")
+        else:
+            self.add_log("Network tab not initialized")
+    
+    def test_ros_connection(self):
+        """ROS connection test handler."""
+        url = self.components['ros_url_input'].text.strip()
+        if not url:
+            self.add_log("Error: Please enter a ROS URL")
+            return
+        
+        if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+            network_tab = self.tab_instances[7]
+            if hasattr(network_tab, 'test_ros_connection'):
+                network_tab.test_ros_connection(url)
+            else:
+                self.add_log("Network tab method not available")
+        else:
+            self.add_log("Network tab not initialized")
+    
+    def save_network_results(self):
+        """Save network test results."""
+        from tkinter import filedialog
+        import tkinter as tk
+        
+        root = tk.Tk()
+        root.withdraw()
+        
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        
+        if filepath:
+            if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+                network_tab = self.tab_instances[7]
+                if hasattr(network_tab, 'save_results'):
+                    network_tab.save_results(filepath)
+                else:
+                    self.add_log("Network tab method not available")
+            else:
+                self.add_log("Network tab not initialized")
+        
+        root.destroy()
+    
+    def save_ros_devices(self):
+        """Save discovered ROS devices."""
+        from tkinter import filedialog
+        import tkinter as tk
+        
+        root = tk.Tk()
+        root.withdraw()
+        
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            title="Save ROS Devices"
+        )
+        
+        if filepath:
+            if len(self.tab_instances) > 7 and self.tab_instances[7] is not None:
+                network_tab = self.tab_instances[7]
+                if hasattr(network_tab, 'save_ros_devices'):
+                    network_tab.save_ros_devices(filepath)
+                else:
+                    self.add_log("Network tab method not available")
+            else:
+                self.add_log("Network tab not initialized")
+        
+        root.destroy()
     
     def handle_events(self):
         """Handle all pygame events."""

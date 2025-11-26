@@ -7,6 +7,13 @@ from .base import UIComponent
 from ..design.design_system import DesignSystem
 from ..renderers.ui_renderer import get_renderer
 
+# Try to import clipboard support (optional)
+try:
+    import pyperclip
+    HAS_CLIPBOARD = True
+except ImportError:
+    HAS_CLIPBOARD = False
+
 
 class Button(UIComponent):
     """Button component with fighter cockpit styling and auto-sizing based on text."""
@@ -292,7 +299,7 @@ class Button(UIComponent):
 
 
 class TextInput(UIComponent):
-    """Text input component with console style."""
+    """Text input component with enhanced editing capabilities."""
     
     def __init__(self, x: int, y: int, width: int, height: int,
                  default_text: str = "", placeholder: str = ""):
@@ -303,38 +310,238 @@ class TextInput(UIComponent):
         self.cursor_visible = True
         self.cursor_timer = 0.0
         self.cursor_pos = len(self.text)
+        self.selection_start = -1  # Selection start position (-1 means no selection)
+        self.scroll_offset = 0  # Horizontal scroll offset for long text
+        self.modifiers = {'ctrl': False, 'shift': False}  # Track modifier keys
+        
+    def _find_word_boundary(self, pos: int, direction: int) -> int:
+        """Find word boundary for Ctrl+Left/Right navigation.
+        
+        Args:
+            pos: Current cursor position
+            direction: -1 for left, 1 for right
+            
+        Returns:
+            New cursor position
+        """
+        if direction < 0:  # Moving left
+            if pos == 0:
+                return 0
+            # Skip whitespace
+            while pos > 0 and self.text[pos - 1].isspace():
+                pos -= 1
+            # Skip word characters
+            while pos > 0 and not self.text[pos - 1].isspace():
+                pos -= 1
+            return pos
+        else:  # Moving right
+            if pos >= len(self.text):
+                return len(self.text)
+            # Skip word characters
+            while pos < len(self.text) and not self.text[pos].isspace():
+                pos += 1
+            # Skip whitespace
+            while pos < len(self.text) and self.text[pos].isspace():
+                pos += 1
+            return pos
+    
+    def _get_selection_range(self) -> Tuple[int, int]:
+        """Get selection range (start, end) with start <= end."""
+        if self.selection_start == -1:
+            return (self.cursor_pos, self.cursor_pos)
+        start = min(self.selection_start, self.cursor_pos)
+        end = max(self.selection_start, self.cursor_pos)
+        return (start, end)
+    
+    def _get_selected_text(self) -> str:
+        """Get currently selected text."""
+        start, end = self._get_selection_range()
+        return self.text[start:end]
+    
+    def _delete_selection(self):
+        """Delete selected text and update cursor."""
+        if self.selection_start == -1:
+            return
+        start, end = self._get_selection_range()
+        self.text = self.text[:start] + self.text[end:]
+        self.cursor_pos = start
+        self.selection_start = -1
+    
+    def _update_cursor_from_mouse(self, mouse_x: int):
+        """Update cursor position based on mouse click position."""
+        renderer = self._renderer
+        padding = DesignSystem.SPACING['sm']
+        text_area_x = self.rect.x + padding
+        
+        # Find closest character position
+        best_pos = len(self.text)
+        best_dist = float('inf')
+        
+        for i in range(len(self.text) + 1):
+            test_text = self.text[:i]
+            text_width = renderer.measure_text(test_text, 'label')[0]
+            char_x = text_area_x + text_width - self.scroll_offset
+            dist = abs(mouse_x - char_x)
+            if dist < best_dist:
+                best_dist = dist
+                best_pos = i
+        
+        self.cursor_pos = best_pos
+        self.selection_start = -1  # Clear selection on click
         
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Handle text input events with port system integration."""
+        """Handle text input events with enhanced editing capabilities."""
         if not self.visible or not self.enabled:
             return False
+        
+        # Track modifier keys
+        keys = pygame.key.get_pressed()
+        self.modifiers['ctrl'] = keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]
+        self.modifiers['shift'] = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
             
         if event.type == pygame.MOUSEBUTTONDOWN:
             was_active = self.active
             self.active = self.rect.collidepoint(event.pos) if hasattr(event, 'pos') else False
             if was_active != self.active:
                 self.emit_signal('focus', self.active)
+            
+            if self.active and hasattr(event, 'pos'):
+                # Update cursor position based on mouse click
+                self._update_cursor_from_mouse(event.pos[0])
+                self.selection_start = self.cursor_pos  # Start selection
+                self.mark_dirty()
+            
             return self.active
+        elif event.type == pygame.MOUSEMOTION:
+            if self.active and hasattr(event, 'pos') and self.rect.collidepoint(event.pos):
+                # Extend selection while dragging
+                if pygame.mouse.get_pressed()[0]:  # Left button held
+                    self._update_cursor_from_mouse(event.pos[0])
+                    if self.selection_start == -1:
+                        self.selection_start = self.cursor_pos
+                    self.mark_dirty()
         elif event.type == pygame.KEYDOWN and self.active:
             old_text = self.text
-            if event.key == pygame.K_BACKSPACE:
-                if self.cursor_pos > 0:
-                    self.text = self.text[:self.cursor_pos-1] + self.text[self.cursor_pos:]
-                    self.cursor_pos = max(0, self.cursor_pos - 1)
-            elif event.key == pygame.K_DELETE:
-                if self.cursor_pos < len(self.text):
-                    self.text = self.text[:self.cursor_pos] + self.text[self.cursor_pos+1:]
-            elif event.key == pygame.K_LEFT:
-                self.cursor_pos = max(0, self.cursor_pos - 1)
-            elif event.key == pygame.K_RIGHT:
-                self.cursor_pos = min(len(self.text), self.cursor_pos + 1)
-            elif event.key == pygame.K_HOME:
-                self.cursor_pos = 0
-            elif event.key == pygame.K_END:
-                self.cursor_pos = len(self.text)
-            elif event.unicode and event.unicode.isprintable():
-                self.text = self.text[:self.cursor_pos] + event.unicode + self.text[self.cursor_pos:]
-                self.cursor_pos += 1
+            handled = False
+            
+            # Handle Ctrl combinations
+            if self.modifiers['ctrl']:
+                if event.key == pygame.K_a:  # Ctrl+A: Select all
+                    self.selection_start = 0
+                    self.cursor_pos = len(self.text)
+                    self.mark_dirty()
+                    return True
+                elif event.key == pygame.K_c:  # Ctrl+C: Copy
+                    selected = self._get_selected_text()
+                    if selected and HAS_CLIPBOARD:
+                        try:
+                            pyperclip.copy(selected)
+                        except:
+                            pass  # Clipboard not available
+                    return True
+                elif event.key == pygame.K_v:  # Ctrl+V: Paste
+                    if HAS_CLIPBOARD:
+                        try:
+                            paste_text = pyperclip.paste()
+                            if paste_text:
+                                self._delete_selection()
+                                self.text = self.text[:self.cursor_pos] + paste_text + self.text[self.cursor_pos:]
+                                self.cursor_pos += len(paste_text)
+                                handled = True
+                        except:
+                            pass  # Clipboard not available
+                elif event.key == pygame.K_x:  # Ctrl+X: Cut
+                    selected = self._get_selected_text()
+                    if selected:
+                        if HAS_CLIPBOARD:
+                            try:
+                                pyperclip.copy(selected)
+                            except:
+                                pass
+                        self._delete_selection()
+                        handled = True
+                elif event.key == pygame.K_LEFT:  # Ctrl+Left: Word left
+                    self.cursor_pos = self._find_word_boundary(self.cursor_pos, -1)
+                    if not self.modifiers['shift']:
+                        self.selection_start = -1
+                    handled = True
+                elif event.key == pygame.K_RIGHT:  # Ctrl+Right: Word right
+                    self.cursor_pos = self._find_word_boundary(self.cursor_pos, 1)
+                    if not self.modifiers['shift']:
+                        self.selection_start = -1
+                    handled = True
+            
+            # Handle regular keys
+            if not handled:
+                if event.key == pygame.K_BACKSPACE:
+                    if self.selection_start != -1:
+                        self._delete_selection()
+                        handled = True
+                    elif self.cursor_pos > 0:
+                        self.text = self.text[:self.cursor_pos-1] + self.text[self.cursor_pos:]
+                        self.cursor_pos = max(0, self.cursor_pos - 1)
+                        handled = True
+                elif event.key == pygame.K_DELETE:
+                    if self.selection_start != -1:
+                        self._delete_selection()
+                        handled = True
+                    elif self.cursor_pos < len(self.text):
+                        self.text = self.text[:self.cursor_pos] + self.text[self.cursor_pos+1:]
+                        handled = True
+                elif event.key == pygame.K_LEFT:
+                    if self.modifiers['shift']:
+                        if self.selection_start == -1:
+                            self.selection_start = self.cursor_pos
+                        self.cursor_pos = max(0, self.cursor_pos - 1)
+                    else:
+                        self.selection_start = -1
+                        self.cursor_pos = max(0, self.cursor_pos - 1)
+                    handled = True
+                elif event.key == pygame.K_RIGHT:
+                    if self.modifiers['shift']:
+                        if self.selection_start == -1:
+                            self.selection_start = self.cursor_pos
+                        self.cursor_pos = min(len(self.text), self.cursor_pos + 1)
+                    else:
+                        self.selection_start = -1
+                        self.cursor_pos = min(len(self.text), self.cursor_pos + 1)
+                    handled = True
+                elif event.key == pygame.K_HOME:
+                    if self.modifiers['shift']:
+                        if self.selection_start == -1:
+                            self.selection_start = self.cursor_pos
+                        self.cursor_pos = 0
+                    else:
+                        self.selection_start = -1
+                        self.cursor_pos = 0
+                    handled = True
+                elif event.key == pygame.K_END:
+                    if self.modifiers['shift']:
+                        if self.selection_start == -1:
+                            self.selection_start = self.cursor_pos
+                        self.cursor_pos = len(self.text)
+                    else:
+                        self.selection_start = -1
+                        self.cursor_pos = len(self.text)
+                    handled = True
+                elif event.unicode and event.unicode.isprintable():
+                    self._delete_selection()  # Delete selection if any
+                    self.text = self.text[:self.cursor_pos] + event.unicode + self.text[self.cursor_pos:]
+                    self.cursor_pos += 1
+                    handled = True
+            
+            # Update scroll offset to keep cursor visible
+            if handled:
+                renderer = self._renderer
+                padding = DesignSystem.SPACING['sm']
+                text_area_width = self.rect.width - padding * 2
+                cursor_text = self.text[:self.cursor_pos]
+                cursor_x = renderer.measure_text(cursor_text, 'label')[0] - self.scroll_offset
+                
+                if cursor_x < 0:
+                    self.scroll_offset = renderer.measure_text(cursor_text, 'label')[0]
+                elif cursor_x > text_area_width:
+                    self.scroll_offset = renderer.measure_text(cursor_text, 'label')[0] - text_area_width + padding
             
             # Emit change signal if text changed
             if self.text != old_text:
@@ -345,7 +552,10 @@ class TextInput(UIComponent):
                 if port:
                     port.value = self.text
                 self.mark_dirty()
-            return True
+            
+            if handled:
+                self.mark_dirty()
+            return handled
         return False
         
     def update(self, dt: float):
@@ -360,7 +570,7 @@ class TextInput(UIComponent):
                 self.mark_dirty()
             
     def _draw_self(self, surface: pygame.Surface):
-        """Draw modern flat text input - no borders, no rounded corners."""
+        """Draw modern flat text input with selection highlighting."""
         renderer = self._renderer
         
         # Modern flat design: subtle background change on focus, no border
@@ -389,11 +599,7 @@ class TextInput(UIComponent):
                            (self.rect.x, self.rect.bottom - 1),
                            (self.rect.right, self.rect.bottom - 1), 1)
         
-        # Draw text
-        display_text = self.text if self.text else self.placeholder
-        text_color = DesignSystem.COLORS['text'] if self.text else DesignSystem.COLORS['text_tertiary']
-        
-        # Clip text if too long
+        # Clip text area
         padding = DesignSystem.SPACING['sm']
         clip_rect = pygame.Rect(
             self.rect.x + padding,
@@ -404,22 +610,47 @@ class TextInput(UIComponent):
         old_clip = surface.get_clip()
         surface.set_clip(clip_rect)
         
+        # Draw selection highlight if any
+        if self.selection_start != -1 and self.selection_start != self.cursor_pos:
+            start, end = self._get_selection_range()
+            start_text = self.text[:start]
+            end_text = self.text[:end]
+            start_x = clip_rect.x + renderer.measure_text(start_text, 'label')[0] - self.scroll_offset
+            end_x = clip_rect.x + renderer.measure_text(end_text, 'label')[0] - self.scroll_offset
+            
+            if start_x < clip_rect.right and end_x > clip_rect.x:
+                # Clip selection rect to visible area
+                sel_x = max(clip_rect.x, start_x)
+                sel_width = min(clip_rect.right, end_x) - sel_x
+                if sel_width > 0:
+                    sel_rect = pygame.Rect(sel_x, clip_rect.y + 2, sel_width, clip_rect.height - 4)
+                    # Draw selection background with semi-transparent primary color
+                    selection_color = tuple(min(255, c + 30) for c in DesignSystem.COLORS['primary'])
+                    renderer.draw_rect(surface, sel_rect, selection_color, border_radius=0)
+        
+        # Draw text with proper scrolling
+        display_text = self.text if self.text else self.placeholder
+        text_color = DesignSystem.COLORS['text'] if self.text else DesignSystem.COLORS['text_tertiary']
+        
         text_height = renderer.measure_text(display_text, 'label')[1]
         text_y = self.rect.y + (self.rect.height - text_height) // 2
-        renderer.render_text(surface, display_text, (clip_rect.x, text_y),
+        text_x = clip_rect.x - self.scroll_offset
+        
+        renderer.render_text(surface, display_text, (text_x, text_y),
                            size='label', color=text_color)
         
         # Draw cursor - modern thin line
         if self.active and self.cursor_visible:
             cursor_text = self.text[:self.cursor_pos]
             cursor_width = renderer.measure_text(cursor_text, 'label')[0]
-            cursor_x = clip_rect.x + cursor_width
+            cursor_x = clip_rect.x + cursor_width - self.scroll_offset
             if clip_rect.x <= cursor_x <= clip_rect.right:
                 # Modern thin cursor line
                 cursor_color = DesignSystem.COLORS['primary']
+                cursor_height = self.rect.height - 8
                 pygame.draw.line(surface, cursor_color,
                                (cursor_x, self.rect.y + 4),
-                               (cursor_x, self.rect.bottom - 4), 1)
+                               (cursor_x, self.rect.bottom - 4), 2)
         
         surface.set_clip(old_clip)
 
@@ -499,15 +730,19 @@ class Checkbox(UIComponent):
 
 
 class Items(UIComponent):
-    """List items component with selection."""
+    """Enhanced list items component with selection, search, and improved display."""
     
     def __init__(self, x: int, y: int, width: int, height: int):
         super().__init__(x, y, width, height)
         self.items: List[Tuple[str, str]] = []  # List of (name, type) tuples
+        self.filtered_items: List[Tuple[str, str]] = []  # Filtered items for display
         self.selected_index = -1
         self.scroll_y = 0
-        self.item_height = 32
+        self.item_height = 36  # Increased for better readability
         self.on_select: Optional[Callable] = None
+        self.search_text = ""  # Search filter
+        self.show_search = False  # Show search box
+        self.hovered_index = -1  # Hovered item index
         
     def set_items(self, items: List[Tuple[str, str]]):
         """Set items list."""
@@ -515,33 +750,117 @@ class Items(UIComponent):
             self.items = [(item, "") for item in items]
         else:
             self.items = items
+        self._update_filtered_items()
         self.mark_dirty()
+    
+    def _update_filtered_items(self):
+        """Update filtered items based on search text."""
+        if not self.search_text:
+            self.filtered_items = self.items
+        else:
+            search_lower = self.search_text.lower()
+            self.filtered_items = [
+                item for item in self.items
+                if search_lower in item[0].lower() or (item[1] and search_lower in item[1].lower())
+            ]
+        # Reset selection if current selection is out of bounds
+        if self.selected_index >= len(self.filtered_items):
+            self.selected_index = -1
+        self.mark_dirty()
+    
+    def set_search(self, search_text: str):
+        """Set search filter text."""
+        if self.search_text != search_text:
+            self.search_text = search_text
+            self._update_filtered_items()
+    
+    def clear_search(self):
+        """Clear search filter."""
+        self.set_search("")
             
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Handle items list events."""
+        """Handle items list events with enhanced interaction."""
         if not self.visible or not self.enabled:
             return False
+        
+        # Calculate content area (excluding search box if shown)
+        content_y = self.rect.y + (40 if self.show_search else 0)
+        content_height = self.rect.height - (40 if self.show_search else 0)
+        content_rect = pygame.Rect(self.rect.x, content_y, self.rect.width, content_height)
             
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if self.rect.collidepoint(event.pos):
-                rel_y = event.pos[1] - self.rect.y
+        if event.type == pygame.MOUSEMOTION:
+            if content_rect.collidepoint(event.pos):
+                rel_y = event.pos[1] - content_rect.y
                 index = (rel_y + self.scroll_y) // self.item_height
-                if 0 <= index < len(self.items):
+                if 0 <= index < len(self.filtered_items):
+                    self.hovered_index = index
+                    self.mark_dirty()
+                else:
+                    self.hovered_index = -1
+                    self.mark_dirty()
+            else:
+                if self.hovered_index != -1:
+                    self.hovered_index = -1
+                    self.mark_dirty()
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if content_rect.collidepoint(event.pos):
+                rel_y = event.pos[1] - content_rect.y
+                index = (rel_y + self.scroll_y) // self.item_height
+                if 0 <= index < len(self.filtered_items):
                     self.selected_index = index
+                    # Emit selection signal
+                    self.emit_signal('select', {'index': index, 'item': self.filtered_items[index]})
+                    self.emit_signal('on_select', self.filtered_items[index])
                     if self.on_select:
-                        self.on_select(self.items[index])
+                        self.on_select(self.filtered_items[index])
                     self.mark_dirty()
                     return True
             elif event.button == 4:  # Scroll up
-                self.scroll_y = max(0, self.scroll_y - 20)
-                self.mark_dirty()
+                if content_rect.collidepoint(event.pos):
+                    self.scroll_y = max(0, self.scroll_y - self.item_height * 2)
+                    self.mark_dirty()
+                    return True
             elif event.button == 5:  # Scroll down
-                self.scroll_y += 20
-                self.mark_dirty()
+                if content_rect.collidepoint(event.pos):
+                    max_scroll = max(0, len(self.filtered_items) * self.item_height - content_height)
+                    self.scroll_y = min(max_scroll, self.scroll_y + self.item_height * 2)
+                    self.mark_dirty()
+                    return True
+        elif event.type == pygame.KEYDOWN:
+            # Keyboard navigation
+            if self.selected_index >= 0:
+                if event.key == pygame.K_UP:
+                    self.selected_index = max(0, self.selected_index - 1)
+                    self._ensure_visible(self.selected_index)
+                    self.mark_dirty()
+                    return True
+                elif event.key == pygame.K_DOWN:
+                    self.selected_index = min(len(self.filtered_items) - 1, self.selected_index + 1)
+                    self._ensure_visible(self.selected_index)
+                    self.mark_dirty()
+                    return True
+                elif event.key == pygame.K_RETURN:
+                    if 0 <= self.selected_index < len(self.filtered_items):
+                        self.emit_signal('select', {'index': self.selected_index, 'item': self.filtered_items[self.selected_index]})
+                        if self.on_select:
+                            self.on_select(self.filtered_items[self.selected_index])
+                        return True
         return False
+    
+    def _ensure_visible(self, index: int):
+        """Ensure selected item is visible by adjusting scroll."""
+        content_height = self.rect.height - (40 if self.show_search else 0)
+        item_y = index * self.item_height
+        visible_top = self.scroll_y
+        visible_bottom = self.scroll_y + content_height
+        
+        if item_y < visible_top:
+            self.scroll_y = item_y
+        elif item_y + self.item_height > visible_bottom:
+            self.scroll_y = item_y + self.item_height - content_height
         
     def _draw_self(self, surface: pygame.Surface):
-        """Draw items list using optimized renderer."""
+        """Draw enhanced items list with improved styling, spacing, and search."""
         renderer = self._renderer
         
         # Draw modern flat background - no border, no rounded corners
@@ -549,13 +868,61 @@ class Items(UIComponent):
                          DesignSystem.COLORS['surface'],
                          border_radius=0)  # No rounded corners
         
-        # Clip to item area
-        clip_rect = self.rect.inflate(-DesignSystem.SPACING['sm'], -DesignSystem.SPACING['sm'])
+        # Draw search box if enabled
+        content_y = self.rect.y
+        content_height = self.rect.height
+        if self.show_search:
+            search_rect = pygame.Rect(
+                self.rect.x + DesignSystem.SPACING['sm'],
+                self.rect.y + DesignSystem.SPACING['sm'],
+                self.rect.width - DesignSystem.SPACING['sm'] * 2,
+                32
+            )
+            # Search box background
+            renderer.draw_rect(surface, search_rect,
+                             DesignSystem.COLORS['bg_panel'],
+                             border_radius=0)
+            # Search text
+            search_display = self.search_text if self.search_text else "Search..."
+            search_color = DesignSystem.COLORS['text'] if self.search_text else DesignSystem.COLORS['text_tertiary']
+            renderer.render_text(surface, search_display,
+                               (search_rect.x + DesignSystem.SPACING['sm'], 
+                                search_rect.y + (search_rect.height - 16) // 2),
+                               size='small',
+                               color=search_color)
+            content_y = search_rect.bottom + DesignSystem.SPACING['sm']
+            content_height = self.rect.bottom - content_y
+        
+        # Clip to item area with proper padding
+        horizontal_padding = DesignSystem.SPACING['md']
+        clip_rect = pygame.Rect(
+            self.rect.x + horizontal_padding,
+            content_y,
+            self.rect.width - horizontal_padding * 2,
+            content_height
+        )
         old_clip = surface.get_clip()
         surface.set_clip(clip_rect)
         
+        # Draw items count if filtered (positioned to avoid overlap)
+        count_text_surf = None
+        if self.search_text and len(self.filtered_items) != len(self.items):
+            count_text = f"{len(self.filtered_items)}/{len(self.items)}"
+            count_text_surf = renderer.font_renderer.get_font('small').render(
+                count_text, True, DesignSystem.COLORS['text_tertiary']
+            )
+            # Position at top-right, with padding
+            count_x = clip_rect.right - count_text_surf.get_width() - DesignSystem.SPACING['xs']
+            count_y = clip_rect.y + DesignSystem.SPACING['xs']
+            surface.blit(count_text_surf, (count_x, count_y))
+        
+        # Calculate item layout with proper spacing
+        item_padding = DesignSystem.SPACING['sm']  # Padding inside each item
+        type_badge_min_width = 80  # Minimum space for type badge
+        type_badge_padding = DesignSystem.SPACING['sm']  # Space between name and type
+        
         y_offset = clip_rect.y - self.scroll_y
-        for i, (name, item_type) in enumerate(self.items):
+        for i, (name, item_type) in enumerate(self.filtered_items):
             item_y = y_offset + i * self.item_height
             if item_y + self.item_height < clip_rect.y:
                 continue
@@ -564,39 +931,88 @@ class Items(UIComponent):
                 
             item_rect = pygame.Rect(clip_rect.x, item_y, clip_rect.width, self.item_height)
             
-            # Highlight selected - modern flat style
+            # Determine item background color
             if i == self.selected_index:
-                # Selected: primary color background, no rounded corners
-                renderer.draw_rect(surface, item_rect,
-                                 DesignSystem.COLORS['primary'],
-                                 border_radius=0)  # No rounded corners
+                # Selected: primary color with subtle glow
+                bg_color = DesignSystem.COLORS['primary']
+                text_color = DesignSystem.COLORS['text']
+                # Draw selection indicator line on left
+                indicator_rect = pygame.Rect(item_rect.x, item_rect.y, 3, item_rect.height)
+                renderer.draw_rect(surface, indicator_rect,
+                                 DesignSystem.COLORS['primary_light'],
+                                 border_radius=0)
+            elif i == self.hovered_index:
+                # Hovered: lighter background
+                bg_color = DesignSystem.COLORS['surface_hover']
                 text_color = DesignSystem.COLORS['text']
             else:
-                # Optional: subtle hover effect on even rows
+                # Normal: alternating row colors for better readability
                 if i % 2 == 0:
-                    hover_bg = tuple(max(0, c - 3) for c in DesignSystem.COLORS['surface'])
-                    renderer.draw_rect(surface, item_rect,
-                                     hover_bg,
-                                     border_radius=0)
+                    bg_color = DesignSystem.COLORS['surface']
+                else:
+                    bg_color = DesignSystem.COLORS['surface_light']
                 text_color = DesignSystem.COLORS['text_secondary']
             
-            # Draw item name
-            name_height = renderer.measure_text(name, 'console')[1]
+            # Draw item background
+            renderer.draw_rect(surface, item_rect, bg_color, border_radius=0)
+            
+            # Calculate available space for name (accounting for type badge if present)
+            available_width = item_rect.width - item_padding * 2
+            if item_type:
+                # Reserve space for type badge + padding
+                type_font = renderer.font_renderer.get_font('small')
+                type_width = type_font.size(item_type)[0]
+                type_total_width = type_width + type_badge_padding * 2
+                available_width -= max(type_total_width, type_badge_min_width)
+            
+            # Draw item name with proper truncation
+            name_x = item_rect.x + item_padding
+            name_height = renderer.measure_text(name, 'label')[1]
             name_y = item_rect.y + (self.item_height - name_height) // 2
-            renderer.render_text(surface, name,
-                               (item_rect.x + DesignSystem.SPACING['sm'], name_y),
-                               size='console',
+            
+            # Truncate name if too long, ensuring no overlap
+            display_name = name
+            name_width = renderer.measure_text(name, 'label')[0]
+            if name_width > available_width:
+                # Truncate with ellipsis
+                ellipsis_width = renderer.measure_text("...", 'label')[0]
+                max_name_width = available_width - ellipsis_width
+                display_name = name
+                while renderer.measure_text(display_name, 'label')[0] > max_name_width and len(display_name) > 0:
+                    display_name = display_name[:-1]
+                display_name = display_name + "..."
+            
+            renderer.render_text(surface, display_name,
+                               (name_x, name_y),
+                               size='label',
                                color=text_color)
             
-            # Draw item type if available
+            # Draw item type badge if available (right-aligned with proper spacing)
             if item_type:
-                type_height = renderer.measure_text(item_type, 'small')[1]
-                type_y = item_rect.y + name_height + 2
-                if type_y + type_height < item_rect.bottom:
-                    renderer.render_text(surface, item_type,
-                                       (item_rect.x + DesignSystem.SPACING['sm'], type_y),
-                                       size='small',
-                                       color=DesignSystem.COLORS['text_tertiary'])
+                type_font = renderer.font_renderer.get_font('small')
+                type_surf = type_font.render(item_type, True, DesignSystem.COLORS['text_tertiary'])
+                type_x = item_rect.right - type_surf.get_width() - item_padding
+                type_y = item_rect.y + (self.item_height - type_surf.get_height()) // 2
+                
+                # Ensure type badge doesn't overlap with name
+                name_end_x = name_x + renderer.measure_text(display_name, 'label')[0]
+                if type_x < name_end_x + type_badge_padding:
+                    # If overlap, don't draw type badge or adjust position
+                    type_x = max(name_end_x + type_badge_padding, item_rect.right - type_surf.get_width() - item_padding)
+                
+                surface.blit(type_surf, (type_x, type_y))
         
         surface.set_clip(old_clip)
+        
+        # Draw scroll indicator if needed
+        if len(self.filtered_items) * self.item_height > content_height:
+            scrollbar_width = 6
+            scrollbar_x = self.rect.right - scrollbar_width - 2
+            total_content_height = len(self.filtered_items) * self.item_height
+            scrollbar_height = max(20, int(content_height * (content_height / total_content_height)))
+            scrollbar_y = content_y + int(self.scroll_y / total_content_height * content_height)
+            scrollbar_rect = pygame.Rect(scrollbar_x, scrollbar_y, scrollbar_width, scrollbar_height)
+            renderer.draw_rect(surface, scrollbar_rect,
+                             DesignSystem.COLORS['border'],
+                             border_radius=0)
 
