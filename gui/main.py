@@ -732,7 +732,7 @@ class RosClientPygameGUI:
         self.render_pointcloud_open3d()
     
     def render_pointcloud_open3d(self):
-        """Render point cloud using Open3D offscreen rendering."""
+        """Render point cloud using Open3D offscreen rendering with high-performance optimizations."""
         if not HAS_OPEN3D or self.current_point_cloud is None:
             return
         
@@ -749,29 +749,67 @@ class RosClientPygameGUI:
             if not isinstance(points, np.ndarray):
                 points = np.array(points, dtype=np.float32)
             
-            max_points = 50000
-            if len(points) > max_points:
-                step = len(points) // max_points
-                points = points[::step]
+            # Adaptive point cloud sampling based on performance
+            # Use voxel downsampling for better quality than uniform sampling
+            max_points = 100000  # Increased for better quality
+            original_count = len(points)
             
+            if original_count > max_points:
+                # Use voxel downsampling for better spatial distribution
+                try:
+                    # Calculate adaptive voxel size based on point cloud extent
+                    if original_count > 0:
+                        min_bound = np.min(points, axis=0)
+                        max_bound = np.max(points, axis=0)
+                        extent = np.max(max_bound - min_bound)
+                        # Voxel size should be proportional to extent and target point count
+                        voxel_size = extent / (max_points ** (1/3)) * 1.2
+                        voxel_size = max(0.01, min(voxel_size, 1.0))  # Clamp to reasonable range
+                        
+                        # Create temporary point cloud for downsampling
+                        temp_pcd = o3d.geometry.PointCloud()
+                        temp_pcd.points = o3d.utility.Vector3dVector(points)
+                        temp_pcd = temp_pcd.voxel_down_sample(voxel_size=voxel_size)
+                        points = np.asarray(temp_pcd.points)
+                except Exception:
+                    # Fallback to uniform sampling if voxel downsampling fails
+                    step = original_count // max_points
+                    points = points[::step]
+            
+            # Reuse geometry if it exists, otherwise create new
             if self.o3d_geometry is None:
                 self.o3d_geometry = o3d.geometry.PointCloud()
             
-            self.o3d_geometry.points = o3d.utility.Vector3dVector(points)
+            # Only update if points changed significantly
+            points_changed = True
+            if hasattr(self, '_last_o3d_points_count'):
+                if abs(len(points) - self._last_o3d_points_count) < len(points) * 0.01:
+                    # Less than 1% change, might not need update
+                    points_changed = False
             
+            if points_changed or not hasattr(self, '_last_o3d_points_count'):
+                self.o3d_geometry.points = o3d.utility.Vector3dVector(points)
+                self._last_o3d_points_count = len(points)
+            
+            # Compute colors with optimized gradient
             if len(points) > 0:
                 z_coords = points[:, 2]
                 z_min, z_max = np.min(z_coords), np.max(z_coords)
                 if z_max > z_min:
+                    # Use height-based coloring with smooth gradient
                     z_normalized = (z_coords - z_min) / (z_max - z_min)
-                    colors = np.zeros((len(points), 3))
-                    colors[:, 0] = z_normalized
-                    colors[:, 1] = z_normalized
-                    colors[:, 2] = z_normalized
+                    # Enhanced color mapping: blue (low) -> cyan -> white (high)
+                    colors = np.zeros((len(points), 3), dtype=np.float32)
+                    colors[:, 0] = z_normalized * 0.5 + 0.5  # R: 0.5 to 1.0
+                    colors[:, 1] = z_normalized * 0.7 + 0.3  # G: 0.3 to 1.0
+                    colors[:, 2] = z_normalized * 0.5 + 0.5  # B: 0.5 to 1.0
+                    # Clamp to [0, 1]
+                    colors = np.clip(colors, 0.0, 1.0)
                     self.o3d_geometry.colors = o3d.utility.Vector3dVector(colors)
                 else:
                     self.o3d_geometry.paint_uniform_color([1.0, 1.0, 1.0])
             
+            # Initialize Open3D visualizer with optimized settings
             if not self.o3d_window_created:
                 self.o3d_vis = o3d.visualization.Visualizer()
                 self.o3d_vis.create_window("3D Point Cloud View", 
@@ -780,30 +818,43 @@ class RosClientPygameGUI:
                                         visible=False)
                 self.o3d_vis.add_geometry(self.o3d_geometry)
                 
+                # Optimize render options for performance
                 opt = self.o3d_vis.get_render_option()
                 opt.background_color = np.array([0.0, 0.0, 0.0])
                 opt.point_size = 1.5
+                # Enable optimizations
+                opt.show_coordinate_frame = False  # Disable for performance
                 
+                # Set initial view
                 ctr = self.o3d_vis.get_view_control()
                 ctr.set_zoom(0.7)
                 
                 self.o3d_window_created = True
+                self.app_state['o3d_vis'] = self.o3d_vis
+                self.app_state['o3d_geometry'] = self.o3d_geometry
             else:
-                self.o3d_vis.update_geometry(self.o3d_geometry)
+                # Only update geometry if points changed
+                if points_changed:
+                    self.o3d_vis.update_geometry(self.o3d_geometry)
             
+            # Poll events and update renderer
             self.o3d_vis.poll_events()
             self.o3d_vis.update_renderer()
             
+            # Capture screen with optimized settings
             img = self.o3d_vis.capture_screen_float_buffer(do_render=True)
             img_array = np.asarray(img)
             img_array = (img_array * 255).astype(np.uint8)
             img_array = np.flipud(img_array)
             
+            # Convert to pygame surface
             self.app_state['pc_surface_o3d'] = pygame.surfarray.make_surface(img_array.swapaxes(0, 1))
             self.o3d_last_update = current_time
             
         except Exception as e:
             print(f"Open3D render error: {e}")
+            import traceback
+            traceback.print_exc()
     
     def set_preset_command(self, command):
         """Set preset command."""

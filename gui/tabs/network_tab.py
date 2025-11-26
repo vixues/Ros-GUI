@@ -752,10 +752,10 @@ class NetworkTab(BaseTab):
         """Draw network test tab with professional tools."""
         self.app_state = app_state
         
-        # Sync test_results with app_state if available
-        if 'test_results' in app_state:
-            # Merge results but keep our own list for this tab
-            pass
+        # Update component positions first (same logic as handle_event)
+        self._layout_components()
+        
+        # Calculate layout
         y = self.tab_height + DesignSystem.SPACING['md']
         
         # Title
@@ -763,9 +763,10 @@ class NetworkTab(BaseTab):
         title_label.draw(self.screen)
         y += 50
         
-        # Tool selection tabs (horizontal)
-        tab_width = 150
+        # Tool selection tabs (horizontal) - dynamic width based on text
         tab_height = 35
+        tab_padding = DesignSystem.SPACING['md'] * 2  # Horizontal padding for tabs
+        tab_spacing = DesignSystem.SPACING['sm']  # Spacing between tabs
         tabs = [
             ("Quick Test", "quick_test"),
             ("Port Scan", "port_scan"),
@@ -775,8 +776,16 @@ class NetworkTab(BaseTab):
             ("Advanced", "advanced")
         ]
         
+        # Calculate tab widths based on text length
+        tab_widths = []
+        for tab_name, _ in tabs:
+            text_width, _ = self.renderer.measure_text(tab_name, 'label')
+            tab_width = text_width + tab_padding
+            tab_widths.append(tab_width)
+        
         tab_x = 50
-        for tab_name, tab_id in tabs:
+        for idx, (tab_name, tab_id) in enumerate(tabs):
+            tab_width = tab_widths[idx]
             tab_rect = pygame.Rect(tab_x, y, tab_width, tab_height)
             is_active = self.current_tool == tab_id
             tab_color = DesignSystem.COLORS['primary'] if is_active else DesignSystem.COLORS['surface']
@@ -791,8 +800,7 @@ class NetworkTab(BaseTab):
                                     (text_x, text_y),
                                     size='label', color=text_color)
             
-            # Click detection (simplified - would need proper event handling)
-            tab_x += tab_width + 5
+            tab_x += tab_width + tab_spacing
         
         y += tab_height + DesignSystem.SPACING['md']
         
@@ -800,7 +808,7 @@ class NetworkTab(BaseTab):
         content_width = self.screen_width - 100
         content_height = self.screen_height - y - 20
         
-        # Draw current tool content
+        # Draw current tool content (components already positioned by _layout_components)
         if self.current_tool == "quick_test":
             self._draw_quick_test(y, content_width, content_height)
         elif self.current_tool == "port_scan":
@@ -829,50 +837,27 @@ class NetworkTab(BaseTab):
         
         card_y = y + 50
         x = 70
-        spacing = DesignSystem.SPACING['md']  # Consistent spacing
         
-        # Host input with proper spacing
+        # Host input (position already set by _layout_components)
         host_label = Label(x, card_y, "Host/IP:", 'label', DesignSystem.COLORS['text_label'])
         host_label.draw(self.screen)
         
         host_input = self.components.get('network_host_input')
         if host_input:
-            label_width = self.renderer.measure_text("Host/IP:", 'label')[0]
-            host_input.rect.x = x + label_width + spacing
-            host_input.rect.y = card_y
-            host_input.rect.width = min(300, width - (x + label_width + spacing) - x)
             host_input.draw(self.screen)
         
-        card_y += 50 + spacing
-        
-        # Test buttons with proper spacing
-        btn_x = x
-        btn_y = card_y
-        btn_spacing = DesignSystem.SPACING['sm']
-        
+        # Test buttons (position already set by _layout_components)
         ping_btn = self.components.get('ping_btn')
         if ping_btn:
-            ping_btn.rect.x = btn_x
-            ping_btn.rect.y = btn_y
             ping_btn.draw(self.screen)
-            btn_x += ping_btn.rect.width + btn_spacing
         
         ws_test_btn = self.components.get('ws_test_btn')
         if ws_test_btn:
-            # Ensure button doesn't exceed card width
-            if btn_x + ws_test_btn.rect.width <= 50 + width - spacing:
-                ws_test_btn.rect.x = btn_x
-                ws_test_btn.rect.y = btn_y
-                ws_test_btn.draw(self.screen)
-                btn_x += ws_test_btn.rect.width + btn_spacing
+            ws_test_btn.draw(self.screen)
         
         ros_test_btn = self.components.get('ros_test_btn')
         if ros_test_btn:
-            # Ensure button doesn't exceed card width
-            if btn_x + ros_test_btn.rect.width <= 50 + width - spacing:
-                ros_test_btn.rect.x = btn_x
-                ros_test_btn.rect.y = btn_y
-                ros_test_btn.draw(self.screen)
+            ros_test_btn.draw(self.screen)
     
     def _draw_port_scan(self, y: int, width: int, height: int):
         """Draw port scan tool."""
@@ -882,65 +867,34 @@ class NetworkTab(BaseTab):
         card_y = y + 50
         x = 70
         spacing = DesignSystem.SPACING['md']
-        row_spacing = 50
         
-        # Host input with proper spacing
+        # Components (position already set by _layout_components)
         host_label = Label(x, card_y, "Host:", 'label', DesignSystem.COLORS['text_label'])
         host_label.draw(self.screen)
-        
         scan_host_input = self.components.get('scan_host_input')
         if scan_host_input:
-            label_width = self.renderer.measure_text("Host:", 'label')[0]
-            scan_host_input.rect.x = x + label_width + spacing
-            scan_host_input.rect.y = card_y
-            scan_host_input.rect.width = min(200, width - (x + label_width + spacing) - x)
             scan_host_input.draw(self.screen)
         
-        card_y += row_spacing
-        
-        # Port range input with proper spacing
+        card_y += 50
         port_label = Label(x, card_y, "Ports:", 'label', DesignSystem.COLORS['text_label'])
         port_label.draw(self.screen)
-        
         port_input = self.components.get('port_range_input')
         if port_input:
-            label_width = self.renderer.measure_text("Ports:", 'label')[0]
-            port_input.rect.x = x + label_width + spacing
-            port_input.rect.y = card_y
-            port_input.rect.width = min(200, width - (x + label_width + spacing) - x)
             port_input.draw(self.screen)
         
-        card_y += row_spacing
-        
-        # Protocol selection with proper spacing
+        card_y += 50
         protocol_label = Label(x, card_y, "Protocol:", 'label', DesignSystem.COLORS['text_label'])
         protocol_label.draw(self.screen)
-        
         tcp_checkbox = self.components.get('tcp_checkbox')
         if tcp_checkbox:
-            label_width = self.renderer.measure_text("Protocol:", 'label')[0]
-            tcp_checkbox.rect.x = x + label_width + spacing
-            tcp_checkbox.rect.y = card_y
             tcp_checkbox.draw(self.screen)
-        
         udp_checkbox = self.components.get('udp_checkbox')
         if udp_checkbox:
-            checkbox_spacing = DesignSystem.SPACING['sm']
-            udp_checkbox.rect.x = tcp_checkbox.rect.right + checkbox_spacing if tcp_checkbox else x + 100
-            udp_checkbox.rect.y = card_y
-            # Ensure checkbox doesn't exceed card width
-            if udp_checkbox.rect.right > 50 + width - spacing:
-                udp_checkbox.rect.x = x + label_width + spacing
-                udp_checkbox.rect.y = card_y + 30  # Move to next line if needed
             udp_checkbox.draw(self.screen)
         
-        card_y += row_spacing
-        
-        # Scan button
+        card_y += 50
         scan_btn = self.components.get('scan_btn')
         if scan_btn:
-            scan_btn.rect.x = x
-            scan_btn.rect.y = card_y
             scan_btn.draw(self.screen)
         
         # Scan results with proper spacing
@@ -982,27 +936,17 @@ class NetworkTab(BaseTab):
         card_y = y + 50
         x = 70
         spacing = DesignSystem.SPACING['md']
-        row_spacing = 50
         
-        # Network input with proper spacing
+        # Components (position already set by _layout_components)
         network_label = Label(x, card_y, "Network:", 'label', DesignSystem.COLORS['text_label'])
         network_label.draw(self.screen)
-        
         network_input = self.components.get('network_input')
         if network_input:
-            label_width = self.renderer.measure_text("Network:", 'label')[0]
-            network_input.rect.x = x + label_width + spacing
-            network_input.rect.y = card_y
-            network_input.rect.width = min(200, width - (x + label_width + spacing) - x)
             network_input.draw(self.screen)
         
-        card_y += row_spacing
-        
-        # Discover button
+        card_y += 50
         discover_btn = self.components.get('discover_btn')
         if discover_btn:
-            discover_btn.rect.x = x
-            discover_btn.rect.y = card_y
             discover_btn.draw(self.screen)
         
         # Device list with proper spacing
@@ -1044,59 +988,22 @@ class NetworkTab(BaseTab):
         row_spacing = 50
         btn_spacing = DesignSystem.SPACING['sm']
         
-        # Network input with auto-detect and proper spacing
+        # Components (position already set by _layout_components)
         network_label = Label(x, card_y, "Network:", 'label', DesignSystem.COLORS['text_label'])
         network_label.draw(self.screen)
-        
         ros_network_input = self.components.get('ros_network_input')
         if ros_network_input:
-            label_width = self.renderer.measure_text("Network:", 'label')[0]
-            ros_network_input.rect.x = x + label_width + spacing
-            ros_network_input.rect.y = card_y
-            # Calculate available width for input (considering auto-detect button)
-            auto_detect_btn = self.components.get('auto_detect_network_btn')
-            if auto_detect_btn:
-                auto_detect_width = auto_detect_btn.rect.width if hasattr(auto_detect_btn, 'rect') else 100
-                ros_network_input.rect.width = min(200, width - (x + label_width + spacing) - auto_detect_width - btn_spacing - x)
-            else:
-                ros_network_input.rect.width = min(200, width - (x + label_width + spacing) - x)
             ros_network_input.draw(self.screen)
-        
-        # Auto-detect button with proper spacing
         auto_detect_btn = self.components.get('auto_detect_network_btn')
         if auto_detect_btn:
-            if ros_network_input:
-                auto_detect_btn.rect.x = ros_network_input.rect.right + btn_spacing
-            else:
-                label_width = self.renderer.measure_text("Network:", 'label')[0]
-                auto_detect_btn.rect.x = x + label_width + spacing
-            auto_detect_btn.rect.y = card_y
-            # Ensure button doesn't exceed card width
-            if auto_detect_btn.rect.right > 50 + width - spacing:
-                auto_detect_btn.rect.x = x
-                auto_detect_btn.rect.y = card_y + 40  # Move to next line if needed
             auto_detect_btn.draw(self.screen)
         
         card_y += row_spacing
-        
-        # Discovery buttons with proper spacing
         discover_ros_btn = self.components.get('discover_ros_btn')
         if discover_ros_btn:
-            discover_ros_btn.rect.x = x
-            discover_ros_btn.rect.y = card_y
             discover_ros_btn.draw(self.screen)
-        
         test_all_ros_btn = self.components.get('test_all_ros_btn')
         if test_all_ros_btn:
-            if discover_ros_btn:
-                test_all_ros_btn.rect.x = discover_ros_btn.rect.right + btn_spacing
-            else:
-                test_all_ros_btn.rect.x = x
-            test_all_ros_btn.rect.y = card_y
-            # Ensure button doesn't exceed card width
-            if test_all_ros_btn.rect.right > 50 + width - spacing:
-                test_all_ros_btn.rect.x = x
-                test_all_ros_btn.rect.y = card_y + 40  # Move to next line if needed
             test_all_ros_btn.draw(self.screen)
         
         # ROS devices list with clickable items and proper spacing
@@ -1243,26 +1150,16 @@ class NetworkTab(BaseTab):
         spacing = DesignSystem.SPACING['md']
         row_spacing = 50
         
-        # ROS URL input with proper spacing
+        # Components (position already set by _layout_components)
         ros_url_label = Label(x, card_y, "Rosbridge URL:", 'label', DesignSystem.COLORS['text_label'])
         ros_url_label.draw(self.screen)
-        
         ros_url_input = self.components.get('ros_url_input')
         if ros_url_input:
-            label_width = self.renderer.measure_text("Rosbridge URL:", 'label')[0]
-            ros_url_input.rect.x = x + label_width + spacing
-            ros_url_input.rect.y = card_y
-            # Calculate available width, ensuring it doesn't exceed card bounds
-            ros_url_input.rect.width = min(400, width - (x + label_width + spacing) - x)
             ros_url_input.draw(self.screen)
         
         card_y += row_spacing
-        
-        # Test button
         ros_test_btn = self.components.get('ros_connection_btn')
         if ros_test_btn:
-            ros_test_btn.rect.x = x
-            ros_test_btn.rect.y = card_y
             ros_test_btn.draw(self.screen)
     
     def _draw_advanced(self, y: int, width: int, height: int):
@@ -1329,53 +1226,96 @@ class NetworkTab(BaseTab):
                                         color=color)
                 result_y += 22  # Increased line spacing
         
-        # Save/Load buttons with proper spacing
-        button_spacing = DesignSystem.SPACING['sm']
-        button_bottom_margin = DesignSystem.SPACING['sm']
-        
-        # Save ROS devices button (if in ROS discovery tab) - positioned above save button
+        # Buttons (position already set by _layout_results_buttons)
         if self.current_tool == "ros_discovery" and self.ros_devices:
             save_ros_btn = self.components.get('save_ros_devices_btn')
             if save_ros_btn:
-                save_ros_btn.rect.x = result_area.right - save_ros_btn.rect.width - spacing
-                save_ros_btn.rect.y = result_area.bottom + button_bottom_margin
                 save_ros_btn.draw(self.screen)
         
-        # Save results button
         save_btn = self.components.get('save_results_btn')
         if save_btn:
-            # Position below save_ros_btn if it exists, otherwise at bottom
-            if self.current_tool == "ros_discovery" and self.ros_devices:
-                save_ros_btn = self.components.get('save_ros_devices_btn')
-                if save_ros_btn:
-                    save_btn.rect.y = save_ros_btn.rect.bottom + button_spacing
-                else:
-                    save_btn.rect.y = result_area.bottom + button_bottom_margin
-            else:
-                save_btn.rect.y = result_area.bottom + button_bottom_margin
-            save_btn.rect.x = result_area.right - save_btn.rect.width - spacing
             save_btn.draw(self.screen)
     
     def handle_event(self, event: pygame.event.Event, app_state: Dict[str, Any]) -> bool:
         """Handle network tab events."""
-        # Handle tab switching
+        # Update component positions (same as draw)
+        self._layout_components()
+        
+        # Handle tab switching first (before component events to avoid conflicts)
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            tab_width = 150
             tab_height = 35
+            tab_padding = DesignSystem.SPACING['md'] * 2
+            tab_spacing = DesignSystem.SPACING['sm']
             tab_y = self.tab_height + DesignSystem.SPACING['md'] + 50
             tab_x = 50
             
-            tabs = ["quick_test", "port_scan", "device_discovery", "ros_discovery", "ros_test", "advanced"]
-            for i, tab_id in enumerate(tabs):
-                tab_rect = pygame.Rect(tab_x + i * (tab_width + 5), tab_y, tab_width, tab_height)
+            tabs_data = [
+                ("Quick Test", "quick_test"),
+                ("Port Scan", "port_scan"),
+                ("Device Discovery", "device_discovery"),
+                ("ROS Discovery", "ros_discovery"),
+                ("ROS Test", "ros_test"),
+                ("Advanced", "advanced")
+            ]
+            
+            # Calculate tab widths (same as in draw method)
+            tab_widths = []
+            for tab_name, _ in tabs_data:
+                text_width, _ = self.renderer.measure_text(tab_name, 'label')
+                tab_width = text_width + tab_padding
+                tab_widths.append(tab_width)
+            
+            current_x = tab_x
+            for i, (tab_name, tab_id) in enumerate(tabs_data):
+                tab_width = tab_widths[i]
+                tab_rect = pygame.Rect(current_x, tab_y, tab_width, tab_height)
                 if tab_rect.collidepoint(event.pos):
                     self.current_tool = tab_id
+                    self._layout_components()  # Re-layout after tab switch
                     return True
+                current_x += tab_width + tab_spacing
+        
+        # Handle component events (buttons, inputs, etc. have priority)
+        # Process buttons first, then other components
+        component_order = []
+        for component_key, component in self.components.items():
+            if component is None:
+                continue
+            # Skip primitive types
+            if isinstance(component, (int, float, str, bool, list, dict, tuple)):
+                continue
+            # Only process components that have handle_event
+            if hasattr(component, 'handle_event'):
+                # Ensure component is visible and enabled
+                if hasattr(component, 'visible') and not component.visible:
+                    continue
+                if hasattr(component, 'enabled') and not component.enabled:
+                    continue
+                # Prioritize buttons
+                if isinstance(component, Button):
+                    component_order.insert(0, (component_key, component))
+                else:
+                    component_order.append((component_key, component))
+        
+        # Handle component events in priority order
+        for component_key, component in component_order:
+            try:
+                # Ensure component rect is valid before handling events
+                if hasattr(component, 'rect'):
+                    if component.rect.width <= 0 or component.rect.height <= 0:
+                        continue  # Skip components with invalid rect
+                
+                if component.handle_event(event):
+                    return True
+            except Exception as e:
+                # Log error but continue processing
+                print(f"Error handling event for component {component_key}: {e}")
+                pass
+        
         
         # Handle ROS device list clicks
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.current_tool == "ros_discovery" and self.ros_devices:
-                # Check if clicking on a ROS device URL
                 card_y = self.tab_height + DesignSystem.SPACING['md'] + 50 + 35 + DesignSystem.SPACING['md'] + 50 + 60 + 30
                 x = 70
                 devices_y = card_y
@@ -1384,20 +1324,12 @@ class NetworkTab(BaseTab):
                     if device.get('rosbridge_url'):
                         url_rect = pygame.Rect(x + 20, devices_y + 34, 500, 16)
                         if url_rect.collidepoint(event.pos):
-                            # Copy URL to ROS URL input
                             ros_url_input = self.components.get('ros_url_input')
                             if ros_url_input:
                                 ros_url_input.text = device['rosbridge_url']
                                 self.add_result(f"Selected ROS device: {device['ip']} ({device['rosbridge_url']})", "info")
                             return True
-                    devices_y += 50
-        
-        # Handle component events
-        for component_key in self.components:
-            component = self.components[component_key]
-            if component and hasattr(component, 'handle_event'):
-                if component.handle_event(event):
-                    return True
+                    devices_y += 55  # Match the spacing used in draw method
         
         # Handle scrolling
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -1409,6 +1341,291 @@ class NetworkTab(BaseTab):
                 return True
         
         return False
+    
+    def _layout_components(self):
+        """Layout components based on current tool. Called by both draw() and handle_event()."""
+        # Calculate base positions (same as in draw method)
+        y = self.tab_height + DesignSystem.SPACING['md']
+        y += 50  # Title height
+        y += 35 + DesignSystem.SPACING['md']  # Tab height + spacing
+        
+        content_width = self.screen_width - 100
+        content_height = self.screen_height - y - 20
+        
+        # Layout components based on current tool
+        if self.current_tool == "quick_test":
+            self._layout_quick_test(y, content_width, content_height)
+        elif self.current_tool == "port_scan":
+            self._layout_port_scan(y, content_width, content_height)
+        elif self.current_tool == "device_discovery":
+            self._layout_device_discovery(y, content_width, content_height)
+        elif self.current_tool == "ros_discovery":
+            self._layout_ros_discovery(y, content_width, content_height)
+        elif self.current_tool == "ros_test":
+            self._layout_ros_test(y, content_width, content_height)
+        
+        # Layout results panel buttons (always at bottom)
+        results_height = min(300, content_height // 3)
+        results_y = y + content_height - results_height
+        self._layout_results_buttons(results_y, content_width, results_height)
+        
+        # Define which components belong to which tool
+        tool_components = {
+            "quick_test": ['network_host_input', 'ping_btn', 'ws_test_btn', 'ros_test_btn'],
+            "port_scan": ['scan_host_input', 'port_range_input', 'tcp_checkbox', 'udp_checkbox', 'scan_btn'],
+            "device_discovery": ['network_input', 'discover_btn'],
+            "ros_discovery": ['ros_network_input', 'auto_detect_network_btn', 'discover_ros_btn', 'test_all_ros_btn', 'save_ros_devices_btn'],
+            "ros_test": ['ros_url_input', 'ros_connection_btn'],
+            "advanced": []
+        }
+        
+        # Set visibility and enabled state based on current tool
+        current_tool_components = set(tool_components.get(self.current_tool, []))
+        # Results buttons are always visible
+        current_tool_components.add('save_results_btn')
+        
+        for component_key, component in self.components.items():
+            if component is None:
+                continue
+            if isinstance(component, (int, float, str, bool, list, dict, tuple)):
+                continue
+            
+            # Set visibility based on whether component belongs to current tool
+            if hasattr(component, 'visible'):
+                component.visible = component_key in current_tool_components
+            
+            # Always enable components that are visible
+            if hasattr(component, 'enabled'):
+                component.enabled = component_key in current_tool_components
+    
+    def _layout_results_buttons(self, results_y: int, width: int, height: int):
+        """Layout buttons in results panel."""
+        spacing = DesignSystem.SPACING['md']
+        button_bottom_margin = DesignSystem.SPACING['md']  # Increased margin for better spacing
+        button_spacing = DesignSystem.SPACING['md']  # Spacing between buttons
+        result_area_bottom = results_y + height - 100
+        
+        # Save ROS devices button (if in ROS discovery tab)
+        if self.current_tool == "ros_discovery" and self.ros_devices:
+            save_ros_btn = self.components.get('save_ros_devices_btn')
+            if save_ros_btn:
+                save_ros_btn.rect.x = 50 + width - save_ros_btn.rect.width - spacing
+                save_ros_btn.rect.y = result_area_bottom + button_bottom_margin
+        
+        # Save results button
+        save_btn = self.components.get('save_results_btn')
+        if save_btn:
+            if self.current_tool == "ros_discovery" and self.ros_devices:
+                save_ros_btn = self.components.get('save_ros_devices_btn')
+                if save_ros_btn:
+                    save_btn.rect.y = save_ros_btn.rect.bottom + button_spacing
+                else:
+                    save_btn.rect.y = result_area_bottom + button_bottom_margin
+            else:
+                save_btn.rect.y = result_area_bottom + button_bottom_margin
+            save_btn.rect.x = 50 + width - save_btn.rect.width - spacing
+    
+    def _layout_quick_test(self, y: int, width: int, height: int):
+        """Update quick test component positions."""
+        card_y = y + 50
+        x = 70
+        spacing = DesignSystem.SPACING['md']
+        
+        host_input = self.components.get('network_host_input')
+        if host_input:
+            label_width = self.renderer.measure_text("Host/IP:", 'label')[0]
+            input_spacing = spacing * 2  # Increased spacing between label and input
+            host_input.rect.x = x + label_width + input_spacing
+            host_input.rect.y = card_y
+            host_input.rect.width = min(300, width - (x + label_width + input_spacing) - x)
+        
+        card_y += 50 + spacing
+        btn_x = x
+        btn_y = card_y
+        btn_spacing = DesignSystem.SPACING['md']  # Increased button spacing for better visual separation
+        
+        ping_btn = self.components.get('ping_btn')
+        if ping_btn:
+            # Ensure button has valid size
+            if ping_btn.rect.width <= 0 or ping_btn.rect.height <= 0:
+                # Recalculate button size if needed
+                if hasattr(ping_btn, '_resize_to_text'):
+                    ping_btn._resize_to_text()
+            ping_btn.rect.x = btn_x
+            ping_btn.rect.y = btn_y
+            btn_x += ping_btn.rect.width + btn_spacing
+        
+        ws_test_btn = self.components.get('ws_test_btn')
+        if ws_test_btn:
+            # Ensure button has valid size
+            if ws_test_btn.rect.width <= 0 or ws_test_btn.rect.height <= 0:
+                if hasattr(ws_test_btn, '_resize_to_text'):
+                    ws_test_btn._resize_to_text()
+            if btn_x + ws_test_btn.rect.width <= 50 + width - spacing:
+                ws_test_btn.rect.x = btn_x
+                ws_test_btn.rect.y = btn_y
+                btn_x += ws_test_btn.rect.width + btn_spacing
+        
+        ros_test_btn = self.components.get('ros_test_btn')
+        if ros_test_btn:
+            # Ensure button has valid size
+            if ros_test_btn.rect.width <= 0 or ros_test_btn.rect.height <= 0:
+                if hasattr(ros_test_btn, '_resize_to_text'):
+                    ros_test_btn._resize_to_text()
+            if btn_x + ros_test_btn.rect.width <= 50 + width - spacing:
+                ros_test_btn.rect.x = btn_x
+                ros_test_btn.rect.y = btn_y
+    
+    def _layout_port_scan(self, y: int, width: int, height: int):
+        """Update port scan component positions."""
+        card_y = y + 50
+        x = 70
+        spacing = DesignSystem.SPACING['md']
+        row_spacing = 50
+        
+        scan_host_input = self.components.get('scan_host_input')
+        if scan_host_input:
+            label_width = self.renderer.measure_text("Host:", 'label')[0]
+            input_spacing = spacing * 2  # Increased spacing between label and input
+            scan_host_input.rect.x = x + label_width + input_spacing
+            scan_host_input.rect.y = card_y
+            scan_host_input.rect.width = min(200, width - (x + label_width + input_spacing) - x)
+        
+        card_y += row_spacing
+        port_input = self.components.get('port_range_input')
+        if port_input:
+            label_width = self.renderer.measure_text("Ports:", 'label')[0]
+            input_spacing = spacing * 2  # Increased spacing between label and input
+            port_input.rect.x = x + label_width + input_spacing
+            port_input.rect.y = card_y
+            port_input.rect.width = min(200, width - (x + label_width + input_spacing) - x)
+        
+        card_y += row_spacing
+        label_width = self.renderer.measure_text("Protocol:", 'label')[0]
+        checkbox_start_x = x + label_width + spacing
+        checkbox_spacing = DesignSystem.SPACING['md'] * 2  # Increased spacing between checkboxes
+        checkbox_y_offset = 2  # Vertical alignment offset
+        
+        tcp_checkbox = self.components.get('tcp_checkbox')
+        if tcp_checkbox:
+            tcp_checkbox.rect.x = checkbox_start_x
+            tcp_checkbox.rect.y = card_y + checkbox_y_offset
+        
+        udp_checkbox = self.components.get('udp_checkbox')
+        if udp_checkbox:
+            if tcp_checkbox:
+                # Calculate UDP checkbox position: after TCP checkbox + its text + spacing
+                # TCP checkbox is 20px wide, text width needs to be measured
+                tcp_text_width, _ = self.renderer.measure_text(tcp_checkbox.text, 'label')
+                tcp_total_width = 20 + DesignSystem.SPACING['sm'] + tcp_text_width  # checkbox + spacing + text
+                udp_checkbox.rect.x = checkbox_start_x + tcp_total_width + checkbox_spacing
+            else:
+                udp_checkbox.rect.x = checkbox_start_x
+            udp_checkbox.rect.y = card_y + checkbox_y_offset
+            
+            # If UDP checkbox would overflow, move to next line
+            if udp_checkbox.rect.right > 50 + width - spacing:
+                udp_checkbox.rect.x = checkbox_start_x
+                udp_checkbox.rect.y = card_y + 35  # Move to next line with proper spacing
+        
+        card_y += row_spacing
+        scan_btn = self.components.get('scan_btn')
+        if scan_btn:
+            scan_btn.rect.x = x
+            scan_btn.rect.y = card_y
+    
+    def _layout_device_discovery(self, y: int, width: int, height: int):
+        """Update device discovery component positions."""
+        card_y = y + 50
+        x = 70
+        spacing = DesignSystem.SPACING['md']
+        row_spacing = 50
+        
+        network_input = self.components.get('network_input')
+        if network_input:
+            label_width = self.renderer.measure_text("Network:", 'label')[0]
+            input_spacing = spacing * 2  # Increased spacing between label and input
+            network_input.rect.x = x + label_width + input_spacing
+            network_input.rect.y = card_y
+            network_input.rect.width = min(200, width - (x + label_width + input_spacing) - x)
+        
+        card_y += row_spacing
+        discover_btn = self.components.get('discover_btn')
+        if discover_btn:
+            discover_btn.rect.x = x
+            discover_btn.rect.y = card_y
+    
+    def _layout_ros_discovery(self, y: int, width: int, height: int):
+        """Update ROS discovery component positions."""
+        card_y = y + 50
+        x = 70
+        spacing = DesignSystem.SPACING['md']
+        row_spacing = 50
+        btn_spacing = DesignSystem.SPACING['md']  # Increased button spacing for better visual separation
+        
+        ros_network_input = self.components.get('ros_network_input')
+        if ros_network_input:
+            label_width = self.renderer.measure_text("Network:", 'label')[0]
+            input_spacing = spacing * 2  # Increased spacing between label and input
+            ros_network_input.rect.x = x + label_width + input_spacing
+            ros_network_input.rect.y = card_y
+            auto_detect_btn = self.components.get('auto_detect_network_btn')
+            if auto_detect_btn:
+                auto_detect_width = auto_detect_btn.rect.width if hasattr(auto_detect_btn, 'rect') else 100
+                ros_network_input.rect.width = min(200, width - (x + label_width + input_spacing) - auto_detect_width - btn_spacing - x)
+            else:
+                ros_network_input.rect.width = min(200, width - (x + label_width + input_spacing) - x)
+        
+        auto_detect_btn = self.components.get('auto_detect_network_btn')
+        if auto_detect_btn:
+            if ros_network_input:
+                auto_detect_btn.rect.x = ros_network_input.rect.right + btn_spacing
+            else:
+                label_width = self.renderer.measure_text("Network:", 'label')[0]
+                input_spacing = spacing * 2
+                auto_detect_btn.rect.x = x + label_width + input_spacing
+            auto_detect_btn.rect.y = card_y
+            if auto_detect_btn.rect.right > 50 + width - spacing:
+                auto_detect_btn.rect.x = x
+                auto_detect_btn.rect.y = card_y + 40
+        
+        card_y += row_spacing
+        discover_ros_btn = self.components.get('discover_ros_btn')
+        if discover_ros_btn:
+            discover_ros_btn.rect.x = x
+            discover_ros_btn.rect.y = card_y
+        
+        test_all_ros_btn = self.components.get('test_all_ros_btn')
+        if test_all_ros_btn:
+            if discover_ros_btn:
+                test_all_ros_btn.rect.x = discover_ros_btn.rect.right + btn_spacing
+            else:
+                test_all_ros_btn.rect.x = x
+            test_all_ros_btn.rect.y = card_y
+            if test_all_ros_btn.rect.right > 50 + width - spacing:
+                test_all_ros_btn.rect.x = x
+                test_all_ros_btn.rect.y = card_y + 40
+    
+    def _layout_ros_test(self, y: int, width: int, height: int):
+        """Update ROS test component positions."""
+        card_y = y + 50
+        x = 70
+        spacing = DesignSystem.SPACING['md']
+        row_spacing = 50
+        
+        ros_url_input = self.components.get('ros_url_input')
+        if ros_url_input:
+            label_width = self.renderer.measure_text("Rosbridge URL:", 'label')[0]
+            input_spacing = spacing * 2  # Increased spacing between label and input
+            ros_url_input.rect.x = x + label_width + input_spacing
+            ros_url_input.rect.y = card_y
+            ros_url_input.rect.width = min(400, width - (x + label_width + input_spacing) - x)
+        
+        card_y += row_spacing
+        ros_test_btn = self.components.get('ros_connection_btn')
+        if ros_test_btn:
+            ros_test_btn.rect.x = x
+            ros_test_btn.rect.y = card_y
     
     def update(self, dt: float, app_state: Dict[str, Any]):
         """Update network tab."""

@@ -590,11 +590,21 @@ class Card(UIComponent):
 
 
 class Label(UIComponent):
-    """Modern text label component with optimized rendering and flexible layout."""
+    """Modern text label component with optimized rendering and flexible layout.
+    
+    Features:
+    - Automatic text truncation with ellipsis
+    - Smart text wrapping
+    - Performance-optimized with caching
+    - Flexible alignment and styling
+    - Auto-sizing based on content
+    """
     
     def __init__(self, x: int, y: int, text: str, 
                  font_size: str = 'label', color: Tuple[int, int, int] = None,
-                 align: str = 'left', max_width: int = None, wrap: bool = False):
+                 align: str = 'left', max_width: int = None, wrap: bool = False,
+                 truncate: bool = True, ellipsis: str = "...", 
+                 auto_size: bool = True, min_width: int = None, min_height: int = None):
         """
         Initialize label component.
         
@@ -605,8 +615,13 @@ class Label(UIComponent):
             font_size: Font size key ('small', 'label', 'title', etc.)
             color: Text color
             align: Text alignment ('left', 'center', 'right')
-            max_width: Maximum width for text wrapping
+            max_width: Maximum width for text wrapping/truncation
             wrap: Whether to wrap text if it exceeds max_width
+            truncate: Whether to truncate text with ellipsis if exceeds max_width (when wrap=False)
+            ellipsis: Ellipsis string for truncation
+            auto_size: Automatically size based on text content
+            min_width: Minimum width (when auto_size=True)
+            min_height: Minimum height (when auto_size=True)
         """
         super().__init__(x, y, 0, 0)
         self.text = text
@@ -615,81 +630,155 @@ class Label(UIComponent):
         self.align = align  # 'left', 'center', 'right'
         self.max_width = max_width
         self.wrap = wrap
+        self.truncate = truncate
+        self.ellipsis = ellipsis
+        self.auto_size = auto_size
+        self.min_width = min_width
+        self.min_height = min_height
+        
+        # Performance optimization: cache text measurements
+        self._cached_measurements = {}
+        self._cached_text_hash = None
+        self._display_text = None  # Cached display text (after truncation/wrapping)
+        self._display_lines = None  # Cached wrapped lines
+        
         self._update_size()
         
+    def _get_text_hash(self) -> str:
+        """Get hash for current text state for caching."""
+        return f"{self.text}|{self.max_width}|{self.wrap}|{self.truncate}"
+    
+    def _measure_text_cached(self, text: str) -> Tuple[int, int]:
+        """Measure text with caching for performance."""
+        cache_key = f"{text}|{self.font_size}"
+        if cache_key not in self._cached_measurements:
+            self._cached_measurements[cache_key] = self._renderer.measure_text(text, self.font_size)
+        return self._cached_measurements[cache_key]
+    
     def _update_size(self):
-        """Update label size based on text."""
+        """Update label size based on text with performance optimization."""
         renderer = self._renderer
-        width, height = renderer.measure_text(self.text, self.font_size)
+        text_hash = self._get_text_hash()
+        
+        # Use cached display text if available
+        if self._cached_text_hash == text_hash and self._display_text is not None:
+            if self.wrap and self._display_lines:
+                line_height = self._measure_text_cached('A')[1]
+                width = min(self.max_width, max(line[0] for line in self._display_lines)) if self.max_width else max(line[0] for line in self._display_lines)
+                height = line_height * len(self._display_lines)
+            else:
+                width, height = self._measure_text_cached(self._display_text)
+            self.rect.width = width
+            self.rect.height = height
+            return
+        
+        # Calculate display text and size
+        width, height = self._measure_text_cached(self.text)
         
         # Handle text wrapping if enabled
         if self.wrap and self.max_width and width > self.max_width:
-            # Simple word wrapping (basic implementation)
+            # Smart word wrapping with caching
             words = self.text.split(' ')
             lines = []
             current_line = []
             current_width = 0
             
             for word in words:
-                word_width = renderer.measure_text(word + ' ', self.font_size)[0]
+                word_width = self._measure_text_cached(word + ' ')[0]
                 if current_width + word_width <= self.max_width or not current_line:
                     current_line.append(word)
                     current_width += word_width
                 else:
-                    lines.append(' '.join(current_line))
+                    line_text = ' '.join(current_line)
+                    lines.append((self._measure_text_cached(line_text)[0], line_text))
                     current_line = [word]
                     current_width = word_width
             
             if current_line:
-                lines.append(' '.join(current_line))
+                line_text = ' '.join(current_line)
+                lines.append((self._measure_text_cached(line_text)[0], line_text))
+            
+            # Cache wrapped lines
+            self._display_lines = lines
             
             # Calculate total height for wrapped text
-            line_height = renderer.measure_text('A', self.font_size)[1]
+            line_height = self._measure_text_cached('A')[1]
             height = line_height * len(lines)
-            width = min(width, self.max_width)
+            width = min(width, self.max_width) if self.max_width else max(line[0] for line in lines)
+            self._display_text = self.text  # Full text for wrapped display
+        elif self.truncate and self.max_width and width > self.max_width:
+            # Smart truncation with ellipsis
+            ellipsis_width = self._measure_text_cached(self.ellipsis)[0]
+            available_width = self.max_width - ellipsis_width
+            
+            # Binary search for optimal truncation point
+            low, high = 0, len(self.text)
+            best_text = self.text
+            
+            while low < high:
+                mid = (low + high + 1) // 2
+                test_text = self.text[:mid]
+                test_width = self._measure_text_cached(test_text)[0]
+                
+                if test_width <= available_width:
+                    best_text = test_text
+                    low = mid
+                else:
+                    high = mid - 1
+            
+            self._display_text = best_text + self.ellipsis
+            width = self.max_width
+            height = self._measure_text_cached(self._display_text)[1]
+            self._display_lines = None
         else:
             if self.max_width:
                 width = min(width, self.max_width)
+            self._display_text = self.text
+            self._display_lines = None
+        
+        # Apply auto-sizing constraints
+        if self.auto_size:
+            if self.min_width:
+                width = max(width, self.min_width)
+            if self.min_height:
+                height = max(height, self.min_height)
         
         self.rect.width = width
         self.rect.height = height
+        
+        # Cache results
+        self._cached_text_hash = text_hash
         self.mark_dirty()
         
     def set_text(self, text: str):
         """Update label text."""
         if self.text != text:
             self.text = text
+            self._cached_text_hash = None  # Invalidate cache
             self._update_size()
+    
+    def set_max_width(self, max_width: int):
+        """Update maximum width."""
+        if self.max_width != max_width:
+            self.max_width = max_width
+            self._cached_text_hash = None  # Invalidate cache
+            self._update_size()
+    
+    def clear_cache(self):
+        """Clear measurement cache (useful when font sizes change)."""
+        self._cached_measurements.clear()
+        self._cached_text_hash = None
+        self._update_size()
         
     def _draw_self(self, surface: pygame.Surface):
-        """Draw modern label using optimized renderer - clean, no background."""
+        """Draw modern label using optimized renderer with cached display text."""
         renderer = self._renderer
         
-        # Handle text wrapping for drawing
-        if self.wrap and self.max_width:
-            words = self.text.split(' ')
-            lines = []
-            current_line = []
-            current_width = 0
-            
-            for word in words:
-                word_width = renderer.measure_text(word + ' ', self.font_size)[0]
-                if current_width + word_width <= self.max_width or not current_line:
-                    current_line.append(word)
-                    current_width += word_width
-                else:
-                    lines.append(' '.join(current_line))
-                    current_line = [word]
-                    current_width = word_width
-            
-            if current_line:
-                lines.append(' '.join(current_line))
-            
-            # Draw each line
-            line_height = renderer.measure_text('A', self.font_size)[1]
-            for i, line in enumerate(lines):
-                line_width = renderer.measure_text(line, self.font_size)[0]
-                
+        # Use cached display text/lines for performance
+        if self._display_lines:
+            # Draw wrapped lines
+            line_height = self._measure_text_cached('A')[1]
+            for i, (line_width, line_text) in enumerate(self._display_lines):
                 # Calculate position based on alignment
                 if self.align == 'center':
                     x_pos = self.rect.centerx - line_width // 2
@@ -699,32 +788,43 @@ class Label(UIComponent):
                     x_pos = self.rect.x
                 
                 y_pos = self.rect.y + i * line_height
-                renderer.render_text(surface, line, (x_pos, y_pos),
+                renderer.render_text(surface, line_text, (x_pos, y_pos),
                                    size=self.font_size,
                                    color=self.color)
         else:
-            # Single line text
+            # Single line text (use cached display text if available)
+            display_text = self._display_text if self._display_text else self.text
+            text_width = self._measure_text_cached(display_text)[0]
+            
             # Calculate position based on alignment
             if self.align == 'center':
-                text_width = renderer.measure_text(self.text, self.font_size)[0]
                 pos = (self.rect.centerx - text_width // 2, self.rect.y)
             elif self.align == 'right':
-                text_width = renderer.measure_text(self.text, self.font_size)[0]
                 pos = (self.rect.right - text_width, self.rect.y)
             else:
                 pos = (self.rect.x, self.rect.y)
             
-            renderer.render_text(surface, self.text, pos,
+            renderer.render_text(surface, display_text, pos,
                                size=self.font_size,
                                color=self.color)
 
 
 class Field(UIComponent):
-    """Modern field component (label + value display) with flat design - no borders, no rounded corners."""
+    """Modern field component (label + value display) with optimized rendering.
+    
+    Features:
+    - Automatic layout optimization
+    - Smart text truncation
+    - Performance-optimized with caching
+    - Flexible alignment and styling
+    - Auto-sizing based on content
+    """
     
     def __init__(self, x: int, y: int, width: int = None, height: int = None,
                  label: str = "", value: str = "", value_color: Tuple[int, int, int] = None,
-                 show_background: bool = False):
+                 show_background: bool = False, label_width: int = None,
+                 label_align: str = 'left', value_align: str = 'right',
+                 spacing: int = None, truncate_value: bool = True):
         """
         Initialize field component.
         
@@ -737,38 +837,134 @@ class Field(UIComponent):
             value: Value text
             value_color: Value text color
             show_background: Whether to show subtle background
+            label_width: Fixed width for label (None for auto-size)
+            label_align: Label alignment ('left', 'center', 'right')
+            value_align: Value alignment ('left', 'center', 'right')
+            spacing: Spacing between label and value (None for auto from DesignSystem)
+            truncate_value: Whether to truncate value text if it exceeds available space
         """
+        self.label = label
+        self.value = str(value)
+        self.value_color = value_color or DesignSystem.COLORS['text']
+        self.show_background = show_background
+        self.label_width = label_width
+        self.label_align = label_align
+        self.value_align = value_align
+        self.spacing = spacing if spacing is not None else DesignSystem.SPACING['md']
+        self.truncate_value = truncate_value
+        
+        # Performance optimization: cache measurements
+        self._cached_measurements = {}
+        self._cached_label_hash = None
+        self._cached_value_hash = None
+        self._display_value = None
+        
         # Auto-calculate size if not provided
         if width is None or height is None:
             renderer = get_renderer()
             label_text = f"{label}:" if label else ""
-            label_width, label_height = renderer.measure_text(label_text, 'label')
-            value_width, value_height = renderer.measure_text(str(value), 'label')
-            total_width = label_width + DesignSystem.SPACING['md'] + value_width
+            label_width_actual, label_height = renderer.measure_text(label_text, 'label')
+            value_width, value_height = renderer.measure_text(self.value, 'label')
+            
+            if self.label_width:
+                label_width_actual = self.label_width
+            
+            total_width = label_width_actual + self.spacing + value_width
             total_height = max(label_height, value_height)
             
             final_width = width if width is not None else total_width + DesignSystem.SPACING['md'] * 2
-            final_height = height if height is not None else total_height + DesignSystem.SPACING['sm']
+            final_height = height if height is not None else total_height + DesignSystem.SPACING['sm'] * 2
         else:
             final_width = width
             final_height = height
         
         super().__init__(x, y, final_width, final_height)
-        self.label = label
-        self.value = value
-        self.value_color = value_color or DesignSystem.COLORS['text']
-        self.show_background = show_background
+        self._update_display_value()
+        
+    def _measure_text_cached(self, text: str) -> Tuple[int, int]:
+        """Measure text with caching for performance."""
+        cache_key = text
+        if cache_key not in self._cached_measurements:
+            self._cached_measurements[cache_key] = self._renderer.measure_text(text, 'label')
+        return self._cached_measurements[cache_key]
+    
+    def _update_display_value(self):
+        """Update display value with truncation if needed."""
+        if not self.truncate_value or not self.rect.width:
+            self._display_value = self.value
+            return
+        
+        renderer = self._renderer
+        label_text = f"{self.label}:" if self.label else ""
+        label_width_actual = self.label_width if self.label_width else self._measure_text_cached(label_text)[0]
+        
+        # Calculate available width for value
+        padding = DesignSystem.SPACING['sm'] * 2
+        available_width = self.rect.width - label_width_actual - self.spacing - padding
+        
+        value_width = self._measure_text_cached(self.value)[0]
+        if value_width <= available_width:
+            self._display_value = self.value
+        else:
+            # Truncate with ellipsis
+            ellipsis = "..."
+            ellipsis_width = self._measure_text_cached(ellipsis)[0]
+            available_width -= ellipsis_width
+            
+            # Binary search for optimal truncation
+            low, high = 0, len(self.value)
+            best_text = ""
+            
+            while low < high:
+                mid = (low + high + 1) // 2
+                test_text = self.value[:mid]
+                test_width = self._measure_text_cached(test_text)[0]
+                
+                if test_width <= available_width:
+                    best_text = test_text
+                    low = mid
+                else:
+                    high = mid - 1
+            
+            self._display_value = best_text + ellipsis
         
     def set_value(self, value: str, color: Tuple[int, int, int] = None):
         """Update field value."""
-        if self.value != str(value):
-            self.value = str(value)
+        new_value = str(value)
+        if self.value != new_value:
+            self.value = new_value
+            self._cached_value_hash = None  # Invalidate cache
             if color:
                 self.value_color = color
+            self._update_display_value()
             self.mark_dirty()
+    
+    def set_label(self, label: str):
+        """Update field label."""
+        if self.label != label:
+            self.label = label
+            self._cached_label_hash = None  # Invalidate cache
+            self._update_display_value()
+            self.mark_dirty()
+    
+    def set_size(self, width: int = None, height: int = None):
+        """Update field size."""
+        if width is not None:
+            self.rect.width = width
+        if height is not None:
+            self.rect.height = height
+        self._update_display_value()
+        self.mark_dirty()
+    
+    def clear_cache(self):
+        """Clear measurement cache."""
+        self._cached_measurements.clear()
+        self._cached_label_hash = None
+        self._cached_value_hash = None
+        self._update_display_value()
             
     def _draw_self(self, surface: pygame.Surface):
-        """Draw modern flat field - no borders, no rounded corners."""
+        """Draw modern flat field with optimized rendering."""
         renderer = self._renderer
         
         # Optional subtle background
@@ -778,26 +974,51 @@ class Field(UIComponent):
                              bg_color,
                              border_radius=0)  # No rounded corners
         
-        # Draw label
+        padding = DesignSystem.SPACING['sm']
         label_text = f"{self.label}:" if self.label else ""
+        
+        # Calculate label width
+        if self.label_width:
+            label_width_actual = self.label_width
+        elif label_text:
+            label_width_actual = self._measure_text_cached(label_text)[0]
+        else:
+            label_width_actual = 0
+        
+        # Draw label with alignment
         if label_text:
-            label_height = renderer.measure_text(label_text, 'label')[1]
+            label_height = self._measure_text_cached(label_text)[1]
             label_y = self.rect.y + (self.rect.height - label_height) // 2
+            
+            if self.label_align == 'center':
+                label_x = self.rect.x + padding + (label_width_actual - self._measure_text_cached(label_text)[0]) // 2
+            elif self.label_align == 'right':
+                label_x = self.rect.x + padding + label_width_actual - self._measure_text_cached(label_text)[0]
+            else:  # left
+                label_x = self.rect.x + padding
+            
             renderer.render_text(surface, label_text,
-                               (self.rect.x + DesignSystem.SPACING['sm'], label_y),
+                               (label_x, label_y),
                                size='label',
                                color=DesignSystem.COLORS['text_label'])
         
-        # Draw value
-        value_text = str(self.value)
+        # Draw value with alignment and truncation
+        value_text = self._display_value if self._display_value else str(self.value)
         if value_text:
-            value_width, value_height = renderer.measure_text(value_text, 'label')
-            # Position value: right-aligned if label exists, otherwise left-aligned
-            if self.label:
-                value_x = self.rect.right - value_width - DesignSystem.SPACING['sm']
-            else:
-                value_x = self.rect.x + DesignSystem.SPACING['sm']
+            value_width, value_height = self._measure_text_cached(value_text)
             value_y = self.rect.y + (self.rect.height - value_height) // 2
+            
+            # Calculate available space for value
+            value_start_x = self.rect.x + padding + label_width_actual + self.spacing
+            
+            if self.value_align == 'center':
+                available_width = self.rect.width - padding * 2 - label_width_actual - self.spacing
+                value_x = value_start_x + (available_width - value_width) // 2
+            elif self.value_align == 'right':
+                value_x = self.rect.right - value_width - padding
+            else:  # left
+                value_x = value_start_x
+            
             renderer.render_text(surface, value_text,
                                (value_x, value_y),
                                size='label',

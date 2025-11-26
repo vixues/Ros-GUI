@@ -299,10 +299,47 @@ class Button(UIComponent):
 
 
 class TextInput(UIComponent):
-    """Text input component with enhanced editing capabilities."""
+    """Text input component with enhanced editing capabilities and optimized rendering.
+    
+    Features:
+    - Performance-optimized with text measurement caching
+    - Smart text scrolling and display
+    - Enhanced editing capabilities (copy, paste, select all, etc.)
+    - Flexible styling and configuration
+    - Auto-sizing support
+    """
     
     def __init__(self, x: int, y: int, width: int, height: int,
-                 default_text: str = "", placeholder: str = ""):
+                 default_text: str = "", placeholder: str = "",
+                 auto_size: bool = False, min_width: int = None, max_width: int = None,
+                 padding: int = None, align: str = 'left'):
+        """
+        Initialize text input component.
+        
+        Args:
+            x: X position
+            y: Y position
+            width: Input width (None for auto-size if auto_size=True)
+            height: Input height
+            default_text: Default text value
+            placeholder: Placeholder text when empty
+            auto_size: Automatically size based on text content
+            min_width: Minimum width (when auto_size=True)
+            max_width: Maximum width (when auto_size=True)
+            padding: Internal padding (None for auto from DesignSystem)
+            align: Text alignment ('left', 'center', 'right')
+        """
+        # Handle auto-sizing
+        if auto_size and width is None:
+            renderer = get_renderer()
+            text_width, text_height = renderer.measure_text(default_text or placeholder, 'label')
+            padding_val = padding if padding is not None else DesignSystem.SPACING['sm'] * 2
+            width = text_width + padding_val * 2
+            if min_width:
+                width = max(width, min_width)
+            if max_width:
+                width = min(width, max_width)
+        
         super().__init__(x, y, width, height)
         self.text = default_text
         self.placeholder = placeholder
@@ -313,6 +350,15 @@ class TextInput(UIComponent):
         self.selection_start = -1  # Selection start position (-1 means no selection)
         self.scroll_offset = 0  # Horizontal scroll offset for long text
         self.modifiers = {'ctrl': False, 'shift': False}  # Track modifier keys
+        self.auto_size = auto_size
+        self.min_width = min_width
+        self.max_width = max_width
+        self.padding = padding if padding is not None else DesignSystem.SPACING['sm']
+        self.align = align
+        
+        # Performance optimization: cache text measurements
+        self._cached_measurements = {}
+        self._cached_text_hash = None
         
     def _find_word_boundary(self, pos: int, direction: int) -> int:
         """Find word boundary for Ctrl+Left/Right navigation.
@@ -367,24 +413,51 @@ class TextInput(UIComponent):
         self.cursor_pos = start
         self.selection_start = -1
     
+    def _measure_text_cached(self, text: str) -> Tuple[int, int]:
+        """Measure text with caching for performance."""
+        cache_key = text
+        if cache_key not in self._cached_measurements:
+            self._cached_measurements[cache_key] = self._renderer.measure_text(text, 'label')
+        return self._cached_measurements[cache_key]
+    
     def _update_cursor_from_mouse(self, mouse_x: int):
-        """Update cursor position based on mouse click position."""
-        renderer = self._renderer
-        padding = DesignSystem.SPACING['sm']
-        text_area_x = self.rect.x + padding
+        """Update cursor position based on mouse click position with optimized search."""
+        text_area_x = self.rect.x + self.padding
         
-        # Find closest character position
+        # Binary search for optimal cursor position (more efficient than linear)
         best_pos = len(self.text)
         best_dist = float('inf')
         
-        for i in range(len(self.text) + 1):
-            test_text = self.text[:i]
-            text_width = renderer.measure_text(test_text, 'label')[0]
+        # Use binary search for better performance with long text
+        low, high = 0, len(self.text)
+        
+        while low <= high:
+            mid = (low + high) // 2
+            test_text = self.text[:mid]
+            text_width = self._measure_text_cached(test_text)[0]
             char_x = text_area_x + text_width - self.scroll_offset
             dist = abs(mouse_x - char_x)
+            
             if dist < best_dist:
                 best_dist = dist
-                best_pos = i
+                best_pos = mid
+            
+            if char_x < mouse_x:
+                low = mid + 1
+            else:
+                high = mid - 1
+        
+        # Fine-tune with nearby positions
+        for offset in [-1, 1, -2, 2]:
+            test_pos = best_pos + offset
+            if 0 <= test_pos <= len(self.text):
+                test_text = self.text[:test_pos]
+                text_width = self._measure_text_cached(test_text)[0]
+                char_x = text_area_x + text_width - self.scroll_offset
+                dist = abs(mouse_x - char_x)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_pos = test_pos
         
         self.cursor_pos = best_pos
         self.selection_start = -1  # Clear selection on click
@@ -530,33 +603,78 @@ class TextInput(UIComponent):
                     self.cursor_pos += 1
                     handled = True
             
-            # Update scroll offset to keep cursor visible
+            # Update scroll offset to keep cursor visible (optimized)
             if handled:
-                renderer = self._renderer
-                padding = DesignSystem.SPACING['sm']
-                text_area_width = self.rect.width - padding * 2
+                text_area_width = self.rect.width - self.padding * 2
                 cursor_text = self.text[:self.cursor_pos]
-                cursor_x = renderer.measure_text(cursor_text, 'label')[0] - self.scroll_offset
+                cursor_width = self._measure_text_cached(cursor_text)[0]
+                cursor_x = cursor_width - self.scroll_offset
                 
                 if cursor_x < 0:
-                    self.scroll_offset = renderer.measure_text(cursor_text, 'label')[0]
+                    self.scroll_offset = cursor_width
                 elif cursor_x > text_area_width:
-                    self.scroll_offset = renderer.measure_text(cursor_text, 'label')[0] - text_area_width + padding
+                    self.scroll_offset = cursor_width - text_area_width + self.padding
+                
+                # Update size if auto-sizing
+                if self.auto_size:
+                    self._update_size_from_text()
             
             # Emit change signal if text changed
             if self.text != old_text:
+                self._cached_text_hash = None  # Invalidate cache
                 self.emit_signal('change', {'text': self.text, 'old_text': old_text})
                 self.emit_signal('on_change', self.text)
                 # Update value port
                 port = self.get_port('value')
                 if port:
                     port.value = self.text
+                
+                # Update size if auto-sizing
+                if self.auto_size:
+                    self._update_size_from_text()
+                
                 self.mark_dirty()
             
             if handled:
                 self.mark_dirty()
             return handled
         return False
+    
+    def _update_size_from_text(self):
+        """Update input size based on text content (for auto-sizing)."""
+        if not self.auto_size:
+            return
+        
+        text_to_measure = self.text if self.text else self.placeholder
+        text_width, text_height = self._measure_text_cached(text_to_measure)
+        new_width = text_width + self.padding * 2
+        
+        if self.min_width:
+            new_width = max(new_width, self.min_width)
+        if self.max_width:
+            new_width = min(new_width, self.max_width)
+        
+        if self.rect.width != new_width:
+            old_right = self.rect.right
+            self.rect.width = new_width
+            # Keep right edge aligned if it was at a specific position
+            # (This is a simple approach; can be enhanced with alignment options)
+            self.mark_dirty()
+    
+    def set_text(self, text: str):
+        """Set text programmatically."""
+        if self.text != text:
+            self.text = text
+            self.cursor_pos = len(self.text)
+            self._cached_text_hash = None  # Invalidate cache
+            if self.auto_size:
+                self._update_size_from_text()
+            self.mark_dirty()
+    
+    def clear_cache(self):
+        """Clear measurement cache (useful when font sizes change)."""
+        self._cached_measurements.clear()
+        self._cached_text_hash = None
         
     def update(self, dt: float):
         """Update cursor blink."""
@@ -610,13 +728,27 @@ class TextInput(UIComponent):
         old_clip = surface.get_clip()
         surface.set_clip(clip_rect)
         
-        # Draw selection highlight if any
+        # Draw selection highlight if any (optimized with caching)
         if self.selection_start != -1 and self.selection_start != self.cursor_pos:
             start, end = self._get_selection_range()
             start_text = self.text[:start]
             end_text = self.text[:end]
-            start_x = clip_rect.x + renderer.measure_text(start_text, 'label')[0] - self.scroll_offset
-            end_x = clip_rect.x + renderer.measure_text(end_text, 'label')[0] - self.scroll_offset
+            start_width = self._measure_text_cached(start_text)[0]
+            end_width = self._measure_text_cached(end_text)[0]
+            
+            if self.align == 'center':
+                text_width = self._measure_text_cached(self.text)[0]
+                base_x = clip_rect.centerx - text_width // 2
+                start_x = base_x + start_width
+                end_x = base_x + end_width
+            elif self.align == 'right':
+                text_width = self._measure_text_cached(self.text)[0]
+                base_x = clip_rect.right - text_width
+                start_x = base_x + start_width
+                end_x = base_x + end_width
+            else:  # left
+                start_x = clip_rect.x + start_width - self.scroll_offset
+                end_x = clip_rect.x + end_width - self.scroll_offset
             
             if start_x < clip_rect.right and end_x > clip_rect.x:
                 # Clip selection rect to visible area
@@ -628,22 +760,36 @@ class TextInput(UIComponent):
                     selection_color = tuple(min(255, c + 30) for c in DesignSystem.COLORS['primary'])
                     renderer.draw_rect(surface, sel_rect, selection_color, border_radius=0)
         
-        # Draw text with proper scrolling
+        # Draw text with proper scrolling and alignment (optimized)
         display_text = self.text if self.text else self.placeholder
         text_color = DesignSystem.COLORS['text'] if self.text else DesignSystem.COLORS['text_tertiary']
         
-        text_height = renderer.measure_text(display_text, 'label')[1]
+        text_width, text_height = self._measure_text_cached(display_text)
         text_y = self.rect.y + (self.rect.height - text_height) // 2
-        text_x = clip_rect.x - self.scroll_offset
+        
+        # Calculate text position based on alignment
+        if self.align == 'center':
+            text_x = clip_rect.centerx - text_width // 2
+        elif self.align == 'right':
+            text_x = clip_rect.right - text_width
+        else:  # left
+            text_x = clip_rect.x - self.scroll_offset
         
         renderer.render_text(surface, display_text, (text_x, text_y),
                            size='label', color=text_color)
         
-        # Draw cursor - modern thin line
+        # Draw cursor - modern thin line (optimized)
         if self.active and self.cursor_visible:
             cursor_text = self.text[:self.cursor_pos]
-            cursor_width = renderer.measure_text(cursor_text, 'label')[0]
-            cursor_x = clip_rect.x + cursor_width - self.scroll_offset
+            cursor_width = self._measure_text_cached(cursor_text)[0]
+            
+            if self.align == 'center':
+                cursor_x = clip_rect.centerx - text_width // 2 + cursor_width
+            elif self.align == 'right':
+                cursor_x = clip_rect.right - text_width + cursor_width
+            else:  # left
+                cursor_x = clip_rect.x + cursor_width - self.scroll_offset
+            
             if clip_rect.x <= cursor_x <= clip_rect.right:
                 # Modern thin cursor line
                 cursor_color = DesignSystem.COLORS['primary']
