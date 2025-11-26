@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import queue
 import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, Future, TimeoutError as FutureTimeoutError
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 from urllib.parse import urlparse
 
 import cv2
@@ -18,6 +19,7 @@ import roslibpy
 from ..core.base import RosClientBase
 from ..core.topic_service_manager import TopicServiceManager
 from ..models.state import ConnectionState
+from ..models.drone import Waypoint
 from ..utils.backoff import exponential_backoff
 from ..utils.logger import setup_logger
 from .config import DEFAULT_CONFIG, DEFAULT_TOPICS
@@ -527,4 +529,92 @@ class RosClient(RosClientBase):
 
         self.log.error(f"Failed to publish to {topic_name} after {retries + 1} attempts: {last_exc}")
         raise last_exc if last_exc is not None else RuntimeError("Unknown publish failure")
+    
+    def safe_publish(self, topic_name: str, topic_type: str, message: Dict[str, Any]) -> bool:
+        """
+        Safely publish to a ROS topic (non-blocking, returns success status).
+        
+        Args:
+            topic_name: Topic name
+            topic_type: Topic type
+            message: Message dictionary
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.publish(topic_name, topic_type, message, retries=1)
+            return True
+        except Exception as e:
+            self.log.warning(f"Safe publish to {topic_name} failed: {e}")
+            return False
+    
+    def send_waypoints(self, waypoints: List[Waypoint], 
+                       topic_name: str = "/mission/waypoints",
+                       topic_type: str = "mavros_msgs/WaypointList") -> bool:
+        """
+        Send waypoints to UAV via ROS topic.
+        
+        Args:
+            waypoints: List of Waypoint objects
+            topic_name: ROS topic name for waypoints (default: /mission/waypoints)
+            topic_type: ROS message type (default: mavros_msgs/WaypointList)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected():
+            self.log.warning("Cannot send waypoints - not connected to ROS")
+            return False
+        
+        try:
+            # Convert waypoints to ROS message format
+            # MAVROS WaypointList format
+            waypoint_list = []
+            for i, wp in enumerate(waypoints):
+                waypoint_msg = {
+                    "frame": 3,  # MAV_FRAME_GLOBAL_RELATIVE_ALT
+                    "command": 16,  # MAV_CMD_NAV_WAYPOINT
+                    "is_current": i == 0,  # First waypoint is current
+                    "autocontinue": True,
+                    "param1": wp.hold_time,  # Hold time
+                    "param2": wp.radius,  # Acceptance radius
+                    "param3": 0.0,  # Pass through
+                    "param4": wp.yaw if wp.yaw is not None else 0.0,  # Yaw angle
+                    "x_lat": wp.latitude,
+                    "y_long": wp.longitude,
+                    "z_alt": wp.altitude
+                }
+                waypoint_list.append(waypoint_msg)
+            
+            # Create waypoint list message
+            message = {
+                "waypoints": waypoint_list,
+                "current_seq": 0 if waypoint_list else -1
+            }
+            
+            # Try MAVROS format first
+            success = self.safe_publish(topic_name, topic_type, message)
+            
+            if not success:
+                # Fallback: try generic JSON format
+                self.log.info("Trying fallback waypoint format")
+                fallback_message = {
+                    "data": json.dumps({
+                        "waypoints": [wp.to_dict() for wp in waypoints],
+                        "count": len(waypoints)
+                    })
+                }
+                success = self.safe_publish("/mission/waypoints_json", "std_msgs/String", fallback_message)
+            
+            if success:
+                self.log.info(f"Successfully sent {len(waypoints)} waypoints to {topic_name}")
+            else:
+                self.log.warning(f"Failed to send waypoints to {topic_name}")
+            
+            return success
+            
+        except Exception as e:
+            self.log.exception(f"Error sending waypoints: {e}")
+            return False
 
