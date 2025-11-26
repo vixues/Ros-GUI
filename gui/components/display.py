@@ -725,11 +725,9 @@ class PointCloudDisplayComponent(UIComponent):
                 center_x - 150, center_y - 40,
                 300, 80
             )
-            renderer.draw_rect_with_border(surface, placeholder_bg,
-                                         DesignSystem.COLORS['surface_light'],
-                                         DesignSystem.COLORS['border'],
-                                         border_width=1,
-                                         border_radius=DesignSystem.RADIUS['md'])
+            renderer.draw_rect(surface, placeholder_bg,
+                             DesignSystem.COLORS['surface_light'],
+                             border_radius=0)  # No rounded corners
             
             # Draw placeholder text
             placeholder_text = "Waiting for point cloud data..."
