@@ -61,6 +61,10 @@ class ImageDisplayComponent(UIComponent):
         
     def _draw_self(self, surface: pygame.Surface):
         """Draw image display component using optimized renderer."""
+        # Skip drawing if rect has zero dimensions
+        if self.rect.width <= 0 or self.rect.height <= 0:
+            return
+        
         renderer = self._renderer
         
         # Draw modern flat background - no border, no rounded corners
@@ -641,6 +645,10 @@ class PointCloudDisplayComponent(UIComponent):
         
     def _draw_self(self, surface: pygame.Surface):
         """Draw point cloud display component with enhanced visuals using optimized renderer."""
+        # Skip drawing if rect has zero dimensions
+        if self.rect.width <= 0 or self.rect.height <= 0:
+            return
+        
         renderer = self._renderer
         
         # Draw modern flat background - no border, no rounded corners

@@ -40,7 +40,12 @@ class Button(UIComponent):
         # Calculate size based on text if not provided
         if width is None or height is None:
             renderer = get_renderer()
-            text_width, text_height = renderer.measure_text(text, 'label')
+            # Measure text - use space if text is empty to get proper height
+            measure_text = text if text else " "
+            text_width, text_height = renderer.measure_text(measure_text, 'label')
+            # If text is empty, width should be 0 but keep height
+            if not text:
+                text_width = 0
             
             # Use provided padding or default from DesignSystem
             if padding is None:
@@ -65,6 +70,12 @@ class Button(UIComponent):
         else:
             final_width = width
             final_height = height
+        
+        # Ensure minimum dimensions
+        if final_width <= 0:
+            final_width = min_width if min_width else 80
+        if final_height <= 0:
+            final_height = min_height if min_height else 32
         
         super().__init__(x, y, final_width, final_height)
         self.text = text
@@ -97,11 +108,22 @@ class Button(UIComponent):
     def _resize_to_text(self):
         """Resize button to fit current text."""
         renderer = self._renderer
-        text_width, text_height = renderer.measure_text(self.text, 'label')
+        # Measure text - use space if text is empty to get proper height
+        measure_text = self.text if self.text else " "
+        text_width, text_height = renderer.measure_text(measure_text, 'label')
+        # If text is empty, width should be 0 but keep height
+        if not self.text:
+            text_width = 0
         
         h_padding, v_padding = self.padding
         new_width = max(text_width + h_padding, self.min_width)
         new_height = max(text_height + v_padding, self.min_height)
+        
+        # Ensure minimum dimensions
+        if new_width <= 0:
+            new_width = self.min_width
+        if new_height <= 0:
+            new_height = self.min_height
         
         # Update rect size while maintaining position
         old_x, old_y = self.rect.x, self.rect.y
@@ -252,6 +274,10 @@ class Button(UIComponent):
             
     def _draw_self(self, surface: pygame.Surface):
         """Draw modern flat button - no borders, no rounded corners."""
+        # Skip drawing if rect has zero dimensions
+        if self.rect.width <= 0 or self.rect.height <= 0:
+            return
+        
         renderer = self._renderer
         
         # Calculate color based on state
@@ -264,12 +290,20 @@ class Button(UIComponent):
             
         # Draw button with scale animation
         scale = self.animation_scale
+        # Ensure scale is valid
+        if scale <= 0:
+            scale = 1.0
+        
         scaled_rect = pygame.Rect(
             self.rect.centerx - self.rect.width * scale / 2,
             self.rect.centery - self.rect.height * scale / 2,
             self.rect.width * scale,
             self.rect.height * scale
         )
+        
+        # Ensure scaled rect has valid dimensions
+        if scaled_rect.width <= 0 or scaled_rect.height <= 0:
+            return
         
         # Draw flat background - no shadow, no border, no rounded corners
         renderer.draw_rect(surface, scaled_rect, bg_color,
@@ -283,19 +317,20 @@ class Button(UIComponent):
                            (scaled_rect.right, scaled_rect.bottom - 1), 2)
         
         # Draw text - ensure contrast with background
-        # Calculate text color based on background brightness
-        bg_brightness = sum(bg_color) / 3.0
-        if bg_brightness > 200:  # Light background - use dark text
-            text_color = (0, 0, 0)  # Black
-        else:  # Dark background - use light text
-            text_color = DesignSystem.COLORS['text']
-        
-        # Calculate text position (centered)
-        text_width, text_height = renderer.measure_text(self.text, 'label')
-        text_x = scaled_rect.centerx - text_width // 2
-        text_y = scaled_rect.centery - text_height // 2
-        renderer.render_text(surface, self.text, (text_x, text_y),
-                           size='label', color=text_color)
+        if self.text:  # Only draw text if it exists
+            # Calculate text color based on background brightness
+            bg_brightness = sum(bg_color) / 3.0
+            if bg_brightness > 200:  # Light background - use dark text
+                text_color = (0, 0, 0)  # Black
+            else:  # Dark background - use light text
+                text_color = DesignSystem.COLORS['text']
+            
+            # Calculate text position (centered)
+            text_width, text_height = renderer.measure_text(self.text, 'label')
+            text_x = scaled_rect.centerx - text_width // 2
+            text_y = scaled_rect.centery - text_height // 2
+            renderer.render_text(surface, self.text, (text_x, text_y),
+                               size='label', color=text_color)
 
 
 class TextInput(UIComponent):
@@ -689,6 +724,10 @@ class TextInput(UIComponent):
             
     def _draw_self(self, surface: pygame.Surface):
         """Draw modern flat text input with selection highlighting."""
+        # Skip drawing if rect has zero dimensions
+        if self.rect.width <= 0 or self.rect.height <= 0:
+            return
+        
         renderer = self._renderer
         
         # Modern flat design: subtle background change on focus, no border
@@ -844,6 +883,10 @@ class Checkbox(UIComponent):
         
     def _draw_self(self, surface: pygame.Surface):
         """Draw checkbox using optimized renderer."""
+        # Skip drawing if rect has zero dimensions
+        if self.rect.width <= 0 or self.rect.height <= 0:
+            return
+        
         renderer = self._renderer
         
         # Draw modern flat checkbox - no border, no rounded corners
@@ -859,20 +902,25 @@ class Checkbox(UIComponent):
         
         # Draw checkmark
         if self.checked:
+            # Ensure checkmark fits within rect
+            check_size = min(self.rect.width - 4, self.rect.height - 4, 10)
+            offset_x = (self.rect.width - check_size) // 2
+            offset_y = (self.rect.height - check_size) // 2
             points = [
-                (self.rect.x + 5, self.rect.y + 10),
-                (self.rect.x + 9, self.rect.y + 14),
-                (self.rect.x + 15, self.rect.y + 6)
+                (self.rect.x + offset_x, self.rect.y + offset_y + check_size * 0.6),
+                (self.rect.x + offset_x + check_size * 0.4, self.rect.y + offset_y + check_size),
+                (self.rect.x + offset_x + check_size, self.rect.y + offset_y)
             ]
             pygame.draw.lines(surface, DesignSystem.COLORS['text'], False, points, 2)
         
-        # Draw label
-        label_height = renderer.measure_text(self.text, 'label')[1]
-        label_y = self.rect.y + (self.rect.height - label_height) // 2
-        renderer.render_text(surface, self.text,
-                           (self.rect.right + DesignSystem.SPACING['sm'], label_y),
-                           size='label',
-                           color=DesignSystem.COLORS['text'])
+        # Draw label if text exists
+        if self.text:
+            label_height = renderer.measure_text(self.text, 'label')[1]
+            label_y = self.rect.y + (self.rect.height - label_height) // 2
+            renderer.render_text(surface, self.text,
+                               (self.rect.right + DesignSystem.SPACING['sm'], label_y),
+                               size='label',
+                               color=DesignSystem.COLORS['text'])
 
 
 class Items(UIComponent):

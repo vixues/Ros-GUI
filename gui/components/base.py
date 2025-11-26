@@ -639,7 +639,7 @@ class Label(UIComponent):
         # Performance optimization: cache text measurements
         self._cached_measurements = {}
         self._cached_text_hash = None
-        self._display_text = None  # Cached display text (after truncation/wrapping)
+        self._display_text = self.text  # Initialize with text (will be updated in _update_size)
         self._display_lines = None  # Cached wrapped lines
         
         self._update_size()
@@ -667,13 +667,30 @@ class Label(UIComponent):
                 width = min(self.max_width, max(line[0] for line in self._display_lines)) if self.max_width else max(line[0] for line in self._display_lines)
                 height = line_height * len(self._display_lines)
             else:
-                width, height = self._measure_text_cached(self._display_text)
+                display_measure_text = self._display_text if self._display_text else " "
+                width, height = self._measure_text_cached(display_measure_text)
+                if not self._display_text:
+                    width = 0
             self.rect.width = width
             self.rect.height = height
             return
         
         # Calculate display text and size
-        width, height = self._measure_text_cached(self.text)
+        # Ensure we have valid text to measure
+        measure_text = self.text if self.text else " "
+        width, height = self._measure_text_cached(measure_text)
+        
+        # Handle empty text case - ensure minimum size for visibility
+        if not self.text:
+            # Use a space character to measure line height
+            _, height = self._measure_text_cached(' ')
+            width = 0
+            # If auto_size is enabled, ensure minimum dimensions
+            if self.auto_size:
+                if self.min_width:
+                    width = self.min_width
+                if self.min_height:
+                    height = max(height, self.min_height)
         
         # Handle text wrapping if enabled
         if self.wrap and self.max_width and width > self.max_width:
@@ -772,6 +789,10 @@ class Label(UIComponent):
         
     def _draw_self(self, surface: pygame.Surface):
         """Draw modern label using optimized renderer with cached display text."""
+        # Skip drawing if rect has zero dimensions
+        if self.rect.width <= 0 and self.rect.height <= 0:
+            return
+        
         renderer = self._renderer
         
         # Use cached display text/lines for performance
@@ -793,8 +814,18 @@ class Label(UIComponent):
                                    color=self.color)
         else:
             # Single line text (use cached display text if available)
-            display_text = self._display_text if self._display_text else self.text
-            text_width = self._measure_text_cached(display_text)[0]
+            display_text = self._display_text if self._display_text is not None else self.text
+            
+            # Skip drawing if text is empty and no minimum size
+            if not display_text and self.rect.width <= 0 and self.rect.height <= 0:
+                return
+            
+            # Calculate text width for positioning
+            if display_text:
+                text_width = self._measure_text_cached(display_text)[0]
+            else:
+                # Empty text - use 0 width but keep height
+                text_width = 0
             
             # Calculate position based on alignment
             if self.align == 'center':
@@ -804,9 +835,11 @@ class Label(UIComponent):
             else:
                 pos = (self.rect.x, self.rect.y)
             
-            renderer.render_text(surface, display_text, pos,
-                               size=self.font_size,
-                               color=self.color)
+            # Only render if there's text to display
+            if display_text:
+                renderer.render_text(surface, display_text, pos,
+                                   size=self.font_size,
+                                   color=self.color)
 
 
 class Field(UIComponent):
@@ -890,7 +923,7 @@ class Field(UIComponent):
     
     def _update_display_value(self):
         """Update display value with truncation if needed."""
-        if not self.truncate_value or not self.rect.width:
+        if not self.truncate_value or not self.rect.width or self.rect.width <= 0:
             self._display_value = self.value
             return
         
@@ -901,6 +934,11 @@ class Field(UIComponent):
         # Calculate available width for value
         padding = DesignSystem.SPACING['sm'] * 2
         available_width = self.rect.width - label_width_actual - self.spacing - padding
+        
+        # Ensure available width is positive
+        if available_width <= 0:
+            self._display_value = self.value
+            return
         
         value_width = self._measure_text_cached(self.value)[0]
         if value_width <= available_width:
@@ -965,6 +1003,10 @@ class Field(UIComponent):
             
     def _draw_self(self, surface: pygame.Surface):
         """Draw modern flat field with optimized rendering."""
+        # Skip drawing if rect has zero dimensions
+        if self.rect.width <= 0 or self.rect.height <= 0:
+            return
+        
         renderer = self._renderer
         
         # Optional subtle background
