@@ -1,25 +1,23 @@
 """Production ROS client implementation."""
 from __future__ import annotations
 
-import base64
-import json
 import logging
 import queue
 import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, Future, TimeoutError as FutureTimeoutError
-from typing import Optional, Dict, Any, Tuple, List
+from typing import Optional, Dict, Any, Tuple
 from urllib.parse import urlparse
 
-import cv2
 import numpy as np
 import roslibpy
 
 from ..core.base import RosClientBase
 from ..core.topic_service_manager import TopicServiceManager
 from ..models.state import ConnectionState
-from ..models.drone import Waypoint
+from ..processors.image_processor import ImageProcessor
+from ..processors.pointcloud_processor import PointCloudProcessor
 from ..utils.backoff import exponential_backoff
 from ..utils.logger import setup_logger
 from .config import DEFAULT_CONFIG, DEFAULT_TOPICS
@@ -62,8 +60,11 @@ class RosClient(RosClientBase):
         self._latest_image: Optional[Tuple[np.ndarray, float]] = None
         self._latest_point_cloud: Optional[Tuple[np.ndarray, float]] = None
 
+        # Initialize processors
         self.log = setup_logger(f"RosClient[{self._host}:{self._port}]")
         self.log.setLevel(self._config.get("logger_level", logging.INFO))
+        self._image_processor = ImageProcessor(self.log)
+        self._pointcloud_processor = PointCloudProcessor(self.log)
 
     def _ensure_ts_mgr(self) -> TopicServiceManager:
         """
@@ -117,11 +118,12 @@ class RosClient(RosClientBase):
                                 self._subscribe_topics()
                             except Exception as e:
                                 self.log.warning(f"Subscription setup failed: {e}")
+                                raise
                             return
                         else:
                             self.log.warning("roslibpy reported not connected after run()")
                     except Exception as e:
-                        self.log.warning(f"Connect attempt {attempt} failed: {e}", exc_info=True)
+                        self.log.warning(f"Connect attempt {attempt} failed: {e}")
 
                     sleep_time = exponential_backoff(base_backoff, attempt, max_backoff)
                     self.log.debug(f"Sleeping {sleep_time:.2f}s before next connect attempt")
@@ -170,76 +172,77 @@ class RosClient(RosClientBase):
             self._ts_mgr.topic(DEFAULT_TOPICS["gps"].name, DEFAULT_TOPICS["gps"].type).subscribe(self.update_gps)
             self._ts_mgr.topic(DEFAULT_TOPICS["odom"].name, DEFAULT_TOPICS["odom"].type).subscribe(self.update_odom)
             self._ts_mgr.topic(DEFAULT_TOPICS["drone_state"].name, DEFAULT_TOPICS["drone_state"].type).subscribe(self.update_drone_state)
-            self._ts_mgr.topic(DEFAULT_TOPICS["camera"].name, DEFAULT_TOPICS["camera"].type).subscribe(self.update_camera)
+            cam_name = self._config.get("camera_topic", DEFAULT_TOPICS["camera"].name)
+            cam_type = self._config.get("camera_type", DEFAULT_TOPICS["camera"].type)
+            self._ts_mgr.topic(cam_name, cam_type).subscribe(self.update_camera)
             self._ts_mgr.topic(DEFAULT_TOPICS["point_cloud"].name, DEFAULT_TOPICS["point_cloud"].type).subscribe(self.update_point_cloud)
         except Exception as e:
-            self.log.exception(f"Failed to subscribe topics: {e}")
+            self.log.error(f"Failed to subscribe topics: {e}")
 
     # ---------- topic handlers ----------
 
     def update_state(self, msg: Dict[str, Any]) -> None:
         """Handle state topic updates."""
         try:
+            update_timestamp = time.time()
             with self._lock:
                 self._state.connected = True
                 self._state.armed = bool(msg.get("armed", self._state.armed))
                 self._state.mode = str(msg.get("mode", self._state.mode))
-                self._state.last_updated = time.time()
-            self.log.debug(f"State updated: mode={self._state.mode}, armed={self._state.armed}")
+                self._state.last_updated = update_timestamp
+                # Add to state history for synchronization
+                self._add_state_to_history(self._state, update_timestamp)
+            
+            # Record state if recording is enabled
+            if self._recorder and self._recorder.is_recording():
+                with self._lock:
+                    self._recorder.record_state(self._state, update_timestamp)
         except Exception as e:
-            self.log.exception(f"Error handling state update: {e}")
+            self.log.error(f"Error handling state update: {e}")
 
     def update_drone_state(self, msg: Dict[str, Any]) -> None:
         """Handle drone state topic updates."""
         try:
+            update_timestamp = time.time()
             with self._lock:
                 self._state.landed = bool(msg.get("landed", self._state.landed))
                 self._state.returned = bool(msg.get("returned", self._state.returned))
                 self._state.reached = bool(msg.get("reached", self._state.reached))
                 self._state.tookoff = bool(msg.get("tookoff", self._state.tookoff))
-                self._state.last_updated = time.time()
-            self.log.debug(f"Drone state updated: landed={self._state.landed}, returned={self._state.returned}")
+                self._state.last_updated = update_timestamp
+                # Add to state history for synchronization
+                self._add_state_to_history(self._state, update_timestamp)
+            
+            # Record state if recording is enabled
+            if self._recorder and self._recorder.is_recording():
+                with self._lock:
+                    self._recorder.record_state(self._state, update_timestamp)
         except Exception as e:
-            self.log.exception(f"Error handling drone state update: {e}")
+            self.log.error(f"Error handling drone state update: {e}")
 
     def update_camera(self, msg: Dict[str, Any]) -> None:
         """Receive camera image messages and convert to OpenCV format."""
-        self.log.info("Received camera message", extra={"msg": msg})
         try:
-            frame = None
-            # CompressedImage: typically has 'data' with base64 or raw bytes
-            if "data" in msg and isinstance(msg["data"], (bytes, bytearray)):
-                np_arr = np.frombuffer(msg["data"], np.uint8)
-                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            elif "data" in msg and isinstance(msg["data"], str):
-                img_data = base64.b64decode(msg["data"])
-                np_arr = np.frombuffer(img_data, np.uint8)
-                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            elif "encoding" in msg and "data" in msg:
-                height = int(msg.get("height", 0))
-                width = int(msg.get("width", 0))
-                encoding = msg.get("encoding", "bgr8")
-                channels = 3 if encoding in ("rgb8", "bgr8") else 1
-                img_data = np.frombuffer(msg["data"], dtype=np.uint8)
-                if height > 0 and width > 0 and img_data.size == height * width * channels:
-                    frame = img_data.reshape((height, width, channels))
-                else:
-                    self.log.debug("Raw image shape mismatch; cannot reshape")
-            else:
-                self.log.warning("Received unknown camera message format")
-                return
-
-            if frame is None:
+            # Use simple processing for subscription (no plugins to avoid blocking)
+            result = self._image_processor.process_simple(msg)
+            if result is None:
                 self.log.warning("Failed to decode camera frame")
                 return
-
-            timestamp = time.time()
+            
+            frame, timestamp = result
+            
+            # Synchronize state with image timestamp
+            synced_state = self.sync_state_with_data(timestamp)
+            self._update_state_with_timestamp(timestamp)
+            
+            # Record image with synchronized state if recording is enabled
+            if self._recorder and self._recorder.is_recording():
+                self._recorder.record_image(frame, timestamp, state=synced_state)
             
             # Update cache (non-blocking, drop old frames if queue is full)
             try:
                 self._image_cache.put_nowait((frame, timestamp))
             except queue.Full:
-                # Queue is full, remove oldest and add new
                 try:
                     self._image_cache.get_nowait()
                     self._image_cache.put_nowait((frame, timestamp))
@@ -249,11 +252,8 @@ class RosClient(RosClientBase):
             # Update legacy latest for backward compatibility
             with self._lock:
                 self._latest_image = (frame, timestamp)
-                self._state.last_updated = timestamp
-
-            self.log.debug(f"Received camera frame at {timestamp:.3f}s")
         except Exception as e:
-            self.log.exception(f"Error decoding camera image: {e}")
+            self.log.error(f"Error processing camera image: {e}")
 
     def fetch_camera_image(self) -> Optional[Tuple[np.ndarray, float]]:
         """
@@ -267,43 +267,33 @@ class RosClient(RosClientBase):
                 if not self.is_connected():
                     self.log.warning("Cannot fetch image — not connected to ROS.")
                     return None
-                topic = self._ts_mgr.topic(DEFAULT_TOPICS["camera"].name, DEFAULT_TOPICS["camera"].type)
+                cam_name = self._config.get("camera_topic", DEFAULT_TOPICS["camera"].name)
+                cam_type = self._config.get("camera_type", DEFAULT_TOPICS["camera"].type)
 
-            msg = topic.get_message(timeout=3.0)
-            if not msg:
-                self.log.warning("No image message received from ROS.")
-                return None
+            # Use temporary subscription to wait for one message
+            msg_received = threading.Event()
+            received_msg: Optional[Dict[str, Any]] = None
 
-            # decode as in update_camera
-            frame = None
-            if "data" in msg and isinstance(msg["data"], (bytes, bytearray)):
-                np_arr = np.frombuffer(msg["data"], np.uint8)
-                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            elif "data" in msg and isinstance(msg["data"], str):
-                img_data = base64.b64decode(msg["data"])
-                np_arr = np.frombuffer(img_data, np.uint8)
-                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            elif "encoding" in msg and "data" in msg:
-                h = int(msg.get("height", 0))
-                w = int(msg.get("width", 0))
-                encoding = msg.get("encoding", "bgr8")
-                channels = 3 if encoding in ("rgb8", "bgr8") else 1
-                img_data = np.frombuffer(msg["data"], dtype=np.uint8)
-                if h > 0 and w > 0 and img_data.size == h * w * channels:
-                    frame = img_data.reshape((h, w, channels))
-                else:
-                    self.log.warning("Image raw data size doesn't match dimensions")
-                    return None
+            def callback(msg: Dict[str, Any]) -> None:
+                nonlocal received_msg
+                received_msg = msg
+                msg_received.set()
+
+            topic = self._ts_mgr.topic(cam_name, cam_type)
+            topic.subscribe(callback)
+
+            # Wait for message with timeout
+            if msg_received.wait(timeout=3.0):
+                topic.unsubscribe()
+                if received_msg:
+                    result = self._image_processor.process_simple(received_msg)
+                    return result
             else:
-                self.log.warning("Unknown image message format.")
+                topic.unsubscribe()
+                self.log.warning("No image message received within timeout.")
                 return None
-
-            timestamp = time.time()
-            self.log.debug(f"Fetched image frame at {timestamp:.3f}s")
-            return frame, timestamp
-
         except Exception as e:
-            self.log.exception(f"Error fetching camera image: {e}")
+            self.log.error(f"Error fetching camera image: {e}")
             return None
 
     def get_latest_image(self) -> Optional[Tuple[np.ndarray, float]]:
@@ -359,15 +349,22 @@ class RosClient(RosClientBase):
     def update_point_cloud(self, msg: Dict[str, Any]) -> None:
         """Handle point cloud topic updates."""
         try:
-            result = self._decode_point_cloud(msg)
+            result = self._pointcloud_processor.process(msg)
             if result:
                 points, ts = result
+                
+                # Synchronize state with point cloud timestamp
+                synced_state = self.sync_state_with_data(ts)
+                self._update_state_with_timestamp(ts)
+                
+                # Record point cloud with synchronized state if recording is enabled
+                if self._recorder and self._recorder.is_recording():
+                    self._recorder.record_pointcloud(points, ts, state=synced_state)
                 
                 # Update cache (non-blocking, drop old frames if queue is full)
                 try:
                     self._pointcloud_cache.put_nowait((points, ts))
                 except queue.Full:
-                    # Queue is full, remove oldest and add new
                     try:
                         self._pointcloud_cache.get_nowait()
                         self._pointcloud_cache.put_nowait((points, ts))
@@ -377,10 +374,8 @@ class RosClient(RosClientBase):
                 # Update legacy latest for backward compatibility
                 with self._lock:
                     self._latest_point_cloud = (points, ts)
-                    self._state.last_updated = ts
-                self.log.debug(f"Received point cloud frame with {len(points)} points at {ts:.3f}s")
         except Exception as e:
-            self.log.exception(f"Error handling point cloud update: {e}")
+            self.log.error(f"Error handling point cloud update: {e}")
 
     def fetch_point_cloud(self) -> Optional[Tuple[np.ndarray, float]]:
         """
@@ -399,33 +394,35 @@ class RosClient(RosClientBase):
                 topic_name = conf.get("point_cloud_topic", "/drone_1_cloud_registered")
                 topic_type = conf.get("point_cloud_type", "sensor_msgs/PointCloud2")
 
-                topic = self._ensure_ts_mgr().topic(topic_name, topic_type)
+            # Use temporary subscription to wait for one message
+            msg_received = threading.Event()
+            received_msg: Optional[Dict[str, Any]] = None
 
-            msg = topic.get_message(timeout=3.0)
-            if not msg:
-                self.log.warning("No point cloud message received from ROS.")
+            def callback(msg: Dict[str, Any]) -> None:
+                nonlocal received_msg
+                received_msg = msg
+                msg_received.set()
+
+            topic = self._ensure_ts_mgr().topic(topic_name, topic_type)
+            topic.subscribe(callback)
+
+            # Wait for message with timeout
+            if msg_received.wait(timeout=3.0):
+                topic.unsubscribe()
+                if received_msg:
+                    return self._pointcloud_processor.process(received_msg)
+            else:
+                topic.unsubscribe()
+                self.log.warning("No point cloud message received within timeout.")
                 return None
-
-            if "data" not in msg or "fields" not in msg:
-                self.log.warning("Invalid PointCloud2 message format.")
-                return None
-
-            result = self._decode_point_cloud(msg)
-            if not result:
-                self.log.warning("Failed to decode point cloud.")
-                return None
-
-            points, ts = result
-            self.log.debug(f"Fetched point cloud with {len(points)} points at {ts:.3f}s")
-            return points, ts
-
         except Exception as e:
-            self.log.exception(f"Error fetching point cloud: {e}")
+            self.log.error(f"Error fetching point cloud: {e}")
             return None
 
     def update_battery(self, msg: Dict[str, Any]) -> None:
         """Handle battery topic updates."""
         try:
+            update_timestamp = time.time()
             with self._lock:
                 p = msg.get("percentage", msg.get("percent", msg.get("battery", 1.0)))
                 try:
@@ -433,14 +430,21 @@ class RosClient(RosClientBase):
                     self._state.battery = (p_val * 100.0) if p_val <= 1.0 else p_val
                 except Exception:
                     self.log.debug("Unable to parse battery percentage; leaving previous value")
-                self._state.last_updated = time.time()
-            self.log.debug(f"Battery: {self._state.battery:.1f}%")
+                self._state.last_updated = update_timestamp
+                # Add to state history for synchronization
+                self._add_state_to_history(self._state, update_timestamp)
+            
+            # Record state if recording is enabled
+            if self._recorder and self._recorder.is_recording():
+                with self._lock:
+                    self._recorder.record_state(self._state, update_timestamp)
         except Exception as e:
-            self.log.exception(f"Error handling battery update: {e}")
+            self.log.error(f"Error handling battery update: {e}")
 
     def update_gps(self, msg: Dict[str, Any]) -> None:
         """Handle GPS topic updates."""
         try:
+            update_timestamp = time.time()
             with self._lock:
                 try:
                     self._state.latitude = float(msg.get("latitude", msg.get("lat", self._state.latitude)))
@@ -448,10 +452,16 @@ class RosClient(RosClientBase):
                     self._state.altitude = float(msg.get("altitude", msg.get("alt", self._state.altitude)))
                 except Exception:
                     self.log.debug("Partial or invalid GPS data received")
-                self._state.last_updated = time.time()
-            self.log.debug(f"GPS: lat={self._state.latitude:.6f}, lon={self._state.longitude:.6f}")
+                self._state.last_updated = update_timestamp
+                # Add to state history for synchronization
+                self._add_state_to_history(self._state, update_timestamp)
+            
+            # Record state if recording is enabled
+            if self._recorder and self._recorder.is_recording():
+                with self._lock:
+                    self._recorder.record_state(self._state, update_timestamp)
         except Exception as e:
-            self.log.exception(f"Error handling GPS update: {e}")
+            self.log.error(f"Error handling GPS update: {e}")
 
     def service_call(self, service_name: str, service_type: str, payload: Dict[str, Any],
                           timeout: Optional[float] = None, retries: Optional[int] = None) -> Dict[str, Any]:
@@ -529,92 +539,4 @@ class RosClient(RosClientBase):
 
         self.log.error(f"Failed to publish to {topic_name} after {retries + 1} attempts: {last_exc}")
         raise last_exc if last_exc is not None else RuntimeError("Unknown publish failure")
-    
-    def safe_publish(self, topic_name: str, topic_type: str, message: Dict[str, Any]) -> bool:
-        """
-        Safely publish to a ROS topic (non-blocking, returns success status).
-        
-        Args:
-            topic_name: Topic name
-            topic_type: Topic type
-            message: Message dictionary
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self.publish(topic_name, topic_type, message, retries=1)
-            return True
-        except Exception as e:
-            self.log.warning(f"Safe publish to {topic_name} failed: {e}")
-            return False
-    
-    def send_waypoints(self, waypoints: List[Waypoint], 
-                       topic_name: str = "/mission/waypoints",
-                       topic_type: str = "mavros_msgs/WaypointList") -> bool:
-        """
-        Send waypoints to UAV via ROS topic.
-        
-        Args:
-            waypoints: List of Waypoint objects
-            topic_name: ROS topic name for waypoints (default: /mission/waypoints)
-            topic_type: ROS message type (default: mavros_msgs/WaypointList)
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self.is_connected():
-            self.log.warning("Cannot send waypoints - not connected to ROS")
-            return False
-        
-        try:
-            # Convert waypoints to ROS message format
-            # MAVROS WaypointList format
-            waypoint_list = []
-            for i, wp in enumerate(waypoints):
-                waypoint_msg = {
-                    "frame": 3,  # MAV_FRAME_GLOBAL_RELATIVE_ALT
-                    "command": 16,  # MAV_CMD_NAV_WAYPOINT
-                    "is_current": i == 0,  # First waypoint is current
-                    "autocontinue": True,
-                    "param1": wp.hold_time,  # Hold time
-                    "param2": wp.radius,  # Acceptance radius
-                    "param3": 0.0,  # Pass through
-                    "param4": wp.yaw if wp.yaw is not None else 0.0,  # Yaw angle
-                    "x_lat": wp.latitude,
-                    "y_long": wp.longitude,
-                    "z_alt": wp.altitude
-                }
-                waypoint_list.append(waypoint_msg)
-            
-            # Create waypoint list message
-            message = {
-                "waypoints": waypoint_list,
-                "current_seq": 0 if waypoint_list else -1
-            }
-            
-            # Try MAVROS format first
-            success = self.safe_publish(topic_name, topic_type, message)
-            
-            if not success:
-                # Fallback: try generic JSON format
-                self.log.info("Trying fallback waypoint format")
-                fallback_message = {
-                    "data": json.dumps({
-                        "waypoints": [wp.to_dict() for wp in waypoints],
-                        "count": len(waypoints)
-                    })
-                }
-                success = self.safe_publish("/mission/waypoints_json", "std_msgs/String", fallback_message)
-            
-            if success:
-                self.log.info(f"Successfully sent {len(waypoints)} waypoints to {topic_name}")
-            else:
-                self.log.warning(f"Failed to send waypoints to {topic_name}")
-            
-            return success
-            
-        except Exception as e:
-            self.log.exception(f"Error sending waypoints: {e}")
-            return False
 

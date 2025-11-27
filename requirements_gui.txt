@@ -1,0 +1,21 @@
+# Backend dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+
+# Frontend dependencies (ImGui)
+pyimgui[glfw]>=2.0.0
+PyOpenGL>=3.1.6
+PyOpenGL-accelerate>=3.1.6
+
+# HTTP client
+requests>=2.31.0
+
+# Image processing (optional, for image display)
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# OpenCV (optional, for image processing in backend)
+opencv-python>=4.8.0
+
