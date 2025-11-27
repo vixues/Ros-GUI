@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { Drone, DroneStatus, TaskPriority, TaskStatus } from '../types';
 import { api } from '../services/api';
@@ -7,7 +7,8 @@ import { cn } from '../lib/utils';
 import { 
     Search, ArrowUp, ArrowDown, MoreHorizontal, 
     RefreshCw, ArrowDown as ArrowDownIcon,
-    Check, Square, PlayCircle, Loader2, X, Target, Zap
+    Check, Square, PlayCircle, Loader2, X, Target, Zap,
+    Wifi, Power, Users, Save, Trash2
 } from 'lucide-react';
 import { DroneDetailCard } from '../components/DroneDetailCard';
 
@@ -84,6 +85,105 @@ const QuickTaskModal = ({ droneIds, onClose, onConfirm }: { droneIds: number[], 
     );
 };
 
+// --- Sub-Component: Group Manager ---
+const GroupManager = ({ 
+    selectedIds, 
+    onLoadGroup 
+}: { 
+    selectedIds: number[], 
+    onLoadGroup: (ids: number[]) => void
+}) => {
+    const [groups, setGroups] = useState<{name: string, ids: number[]}[]>(() => {
+        try {
+            const saved = localStorage.getItem('drone_groups');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            return [];
+        }
+    });
+    const [newGroupName, setNewGroupName] = useState('');
+    const [isOpen, setIsOpen] = useState(false);
+
+    const handleSave = () => {
+        if(!newGroupName || selectedIds.length === 0) return;
+        const newGroups = [...groups, { name: newGroupName, ids: selectedIds }];
+        setGroups(newGroups);
+        localStorage.setItem('drone_groups', JSON.stringify(newGroups));
+        setNewGroupName('');
+    };
+
+    const handleDelete = (name: string) => {
+        const newGroups = groups.filter(g => g.name !== name);
+        setGroups(newGroups);
+        localStorage.setItem('drone_groups', JSON.stringify(newGroups));
+    };
+
+    return (
+        <div className="relative">
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all border",
+                    isOpen ? "bg-zinc-800 text-white border-zinc-700" : "bg-zinc-800 text-zinc-300 border-zinc-700 hover:text-white hover:bg-zinc-700"
+                )}
+                title="Manage Selection Groups"
+            >
+                <Users size={14} />
+                <span className="hidden xl:inline">Groups</span>
+            </button>
+
+            {isOpen && (
+                <div className="absolute top-full right-0 mt-2 w-72 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-[100] p-3 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                     <div className="pb-3 border-b border-zinc-800">
+                        <h4 className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Save Selection</h4>
+                        <div className="flex gap-2">
+                            <input 
+                                className="flex-1 bg-black border border-zinc-800 rounded px-2 py-1.5 text-xs text-white focus:border-primary focus:outline-none"
+                                placeholder="Group Name"
+                                value={newGroupName}
+                                onChange={(e) => setNewGroupName(e.target.value)}
+                            />
+                            <button 
+                                onClick={handleSave}
+                                disabled={!newGroupName || selectedIds.length === 0}
+                                className="bg-primary text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Save size={14} />
+                            </button>
+                        </div>
+                        {selectedIds.length === 0 && (
+                             <p className="text-[9px] text-zinc-600 mt-1 italic">Select drones to create a group</p>
+                        )}
+                     </div>
+                     
+                     <div>
+                        <h4 className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Saved Groups</h4>
+                        <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                            {groups.length === 0 && <p className="text-[10px] text-zinc-600 italic text-center py-2">No groups saved</p>}
+                            {groups.map(g => (
+                                <div key={g.name} className="flex items-center justify-between group p-1.5 rounded hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-all">
+                                    <button 
+                                        onClick={() => { onLoadGroup(g.ids); setIsOpen(false); }}
+                                        className="flex-1 text-left text-xs text-zinc-300 hover:text-white font-medium truncate"
+                                    >
+                                        <span className="font-bold text-white">{g.name}</span> <span className="text-zinc-600 text-[10px] ml-1">({g.ids.length} Units)</span>
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDelete(g.name)}
+                                        className="text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                     </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const FleetManagement: React.FC = () => {
     const { drones, updateDrone, addTaskLocally, addNotification } = useStore();
     const [searchTerm, setSearchTerm] = useState('');
@@ -92,7 +192,7 @@ export const FleetManagement: React.FC = () => {
     const [sortConfig, setSortConfig] = useState<{ key: keyof Drone, direction: 'asc' | 'desc' } | null>(null);
     
     // Action States
-    const [isBulkLoading, setIsBulkLoading] = useState<string | null>(null); // 'land' | 'reboot'
+    const [isBulkLoading, setIsBulkLoading] = useState<string | null>(null); // 'land' | 'reboot' | 'connect' | 'disconnect'
     const [quickTaskTarget, setQuickTaskTarget] = useState<number[] | null>(null); // IDs to assign task to
     const [detailDroneId, setDetailDroneId] = useState<number | null>(null); // ID for detail drawer
 
@@ -149,6 +249,42 @@ export const FleetManagement: React.FC = () => {
     };
 
     // --- Bulk Action Handlers ---
+
+    const handleBulkConnect = async () => {
+        if (selectedIds.length === 0) return;
+        setIsBulkLoading('connect');
+        
+        try {
+            await Promise.all(selectedIds.map(id => api.connectDrone(id)));
+            addNotification('success', `Connection initiated for ${selectedIds.length} units`);
+            // Optimistic update
+            selectedIds.forEach(id => updateDrone(id, { status: DroneStatus.IDLE }));
+        } catch (error) {
+            console.error("Bulk Connect Failed", error);
+            addNotification('error', "Failed to connect selected units");
+        } finally {
+            setIsBulkLoading(null);
+            setSelectedIds([]);
+        }
+    };
+
+    const handleBulkDisconnect = async () => {
+        if (selectedIds.length === 0) return;
+        setIsBulkLoading('disconnect');
+        
+        try {
+            await Promise.all(selectedIds.map(id => api.disconnectDrone(id)));
+            addNotification('success', `Disconnect signal sent to ${selectedIds.length} units`);
+            // Optimistic update
+            selectedIds.forEach(id => updateDrone(id, { status: DroneStatus.OFFLINE }));
+        } catch (error) {
+            console.error("Bulk Disconnect Failed", error);
+            addNotification('error', "Failed to disconnect selected units");
+        } finally {
+            setIsBulkLoading(null);
+            setSelectedIds([]);
+        }
+    };
 
     const handleBulkLand = async () => {
         if (selectedIds.length === 0) return;
@@ -219,6 +355,12 @@ export const FleetManagement: React.FC = () => {
         }
     };
 
+    const handleLoadGroup = (ids: number[]) => {
+        const validIds = ids.filter(id => drones.some(d => d.id === id));
+        setSelectedIds(validIds);
+        addNotification('info', `Group loaded: ${validIds.length} units selected`);
+    };
+
     const getStatusBadge = (status: DroneStatus) => {
         const styles = {
             [DroneStatus.FLYING]: 'bg-blue-500/20 text-blue-400 border-blue-500/20',
@@ -248,21 +390,46 @@ export const FleetManagement: React.FC = () => {
                         <p className="text-sm text-zinc-500">Manage swarm configurations and bulk directives</p>
                     </div>
                     <div className="flex gap-2">
+                        <GroupManager 
+                            selectedIds={selectedIds} 
+                            onLoadGroup={handleLoadGroup} 
+                        />
+                        <div className="w-px bg-zinc-800 mx-1"></div>
+                        <button 
+                            disabled={selectedIds.length === 0 || !!isBulkLoading}
+                            onClick={handleBulkConnect}
+                            className="bg-zinc-800 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-zinc-700 disabled:opacity-50 transition-all border border-zinc-700 hover:border-zinc-600"
+                            title="Connect Selected"
+                        >
+                             {isBulkLoading === 'connect' ? <Loader2 size={14} className="animate-spin" /> : <Wifi size={14} className="text-emerald-500"/>} 
+                             <span className="hidden xl:inline">Connect</span>
+                        </button>
+                        <button 
+                            disabled={selectedIds.length === 0 || !!isBulkLoading}
+                            onClick={handleBulkDisconnect}
+                            className="bg-zinc-800 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-zinc-700 disabled:opacity-50 transition-all border border-zinc-700 hover:border-zinc-600"
+                            title="Disconnect Selected"
+                        >
+                             {isBulkLoading === 'disconnect' ? <Loader2 size={14} className="animate-spin" /> : <Power size={14} className="text-zinc-400"/>} 
+                             <span className="hidden xl:inline">Disconnect</span>
+                        </button>
                          <button 
                             disabled={selectedIds.length === 0 || !!isBulkLoading}
                             onClick={handleBulkLand}
-                            className="bg-zinc-800 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-zinc-700 disabled:opacity-50 transition-all"
+                            className="bg-zinc-800 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-zinc-700 disabled:opacity-50 transition-all border border-zinc-700 hover:border-zinc-600"
+                            title="Land Selected"
                          >
-                             {isBulkLoading === 'land' ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownIcon size={14} />} 
-                             Land Selected
+                             {isBulkLoading === 'land' ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownIcon size={14} className="text-amber-500"/>} 
+                             <span className="hidden xl:inline">Land</span>
                          </button>
                          <button 
                             disabled={selectedIds.length === 0 || !!isBulkLoading}
                             onClick={handleBulkReboot}
-                            className="bg-zinc-800 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-zinc-700 disabled:opacity-50 transition-all"
+                            className="bg-zinc-800 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-zinc-700 disabled:opacity-50 transition-all border border-zinc-700 hover:border-zinc-600"
+                            title="Reboot Selected"
                          >
                              {isBulkLoading === 'reboot' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} 
-                             Reboot Selected
+                             <span className="hidden xl:inline">Reboot</span>
                          </button>
                     </div>
                 </div>

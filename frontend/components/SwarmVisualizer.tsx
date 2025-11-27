@@ -1,13 +1,45 @@
 
 import React, { useRef, useMemo } from 'react';
-import { Canvas, useFrame, ThreeElements } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid, Stars, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { Drone, DroneStatus } from '../types';
 
+// Manually extend JSX IntrinsicElements for React Three Fiber
 declare global {
   namespace JSX {
-    interface IntrinsicElements extends ThreeElements {}
+    interface IntrinsicElements {
+      ambientLight: any;
+      pointLight: any;
+      directionalLight: any;
+      group: any;
+      mesh: any;
+      boxGeometry: any;
+      cylinderGeometry: any;
+      circleGeometry: any;
+      ringGeometry: any;
+      meshStandardMaterial: any;
+      meshBasicMaterial: any;
+      primitive: any;
+      line: any;
+      lineBasicMaterial: any;
+      bufferGeometry: any;
+      perspectiveCamera: any;
+      scene: any;
+      points: any;
+      gridHelper: any;
+      axesHelper: any;
+      // Added missing types
+      instancedMesh: any;
+      spotLight: any;
+      hemisphereLight: any;
+      object3D: any;
+      fog: any;
+      color: any;
+      meshPhongMaterial: any;
+      meshLambertMaterial: any;
+      directionalLightHelper: any;
+    }
   }
 }
 
