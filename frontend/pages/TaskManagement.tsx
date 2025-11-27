@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useStore } from '../store/useStore';
@@ -156,8 +157,8 @@ export const TaskManagement: React.FC = () => {
           <span className="ml-auto px-2 py-0.5 rounded-full bg-zinc-800 text-xs text-white font-bold">{count}</span>
        </div>
        <div className="flex-1 overflow-y-auto pr-1 min-h-[100px] custom-scrollbar">
-          {tasks.filter(t => t.status === status).map(t => <TaskCard key={t.id} task={t} />)}
-          {tasks.filter(t => t.status === status).length === 0 && (
+          {Array.isArray(tasks) && tasks.filter(t => t.status === status).map(t => <TaskCard key={t.id} task={t} />)}
+          {(!Array.isArray(tasks) || tasks.filter(t => t.status === status).length === 0) && (
              <div className="h-32 flex items-center justify-center text-zinc-600 text-xs font-medium italic border-2 border-dashed border-zinc-800/50 rounded-lg">
                Drop item here
              </div>
@@ -165,6 +166,10 @@ export const TaskManagement: React.FC = () => {
        </div>
     </div>
   );
+
+  const pendingCount = Array.isArray(tasks) ? tasks.filter(t => t.status === TaskStatus.PENDING).length : 0;
+  const activeCount = Array.isArray(tasks) ? tasks.filter(t => t.status === TaskStatus.IN_PROGRESS).length : 0;
+  const completedCount = Array.isArray(tasks) ? tasks.filter(t => t.status === TaskStatus.COMPLETED).length : 0;
 
   return (
     <div className="h-full flex flex-col gap-6">
@@ -187,19 +192,19 @@ export const TaskManagement: React.FC = () => {
           status={TaskStatus.PENDING} 
           title="Pending" 
           icon={Clock} 
-          count={tasks.filter(t => t.status === TaskStatus.PENDING).length}
+          count={pendingCount}
         />
         <Column 
           status={TaskStatus.IN_PROGRESS} 
           title="Active" 
           icon={Activity} 
-          count={tasks.filter(t => t.status === TaskStatus.IN_PROGRESS).length}
+          count={activeCount}
         />
         <Column 
           status={TaskStatus.COMPLETED} 
           title="Completed" 
           icon={CheckCircle} 
-          count={tasks.filter(t => t.status === TaskStatus.COMPLETED).length}
+          count={completedCount}
         />
       </div>
 

@@ -64,7 +64,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({ isLoadingDrones: true });
     try {
       const data = await api.getDrones();
-      set({ drones: data });
+      set({ drones: Array.isArray(data) ? data : [] });
     } catch (error) {
       console.error(error);
       get().addNotification('error', 'Failed to update swarm telemetry');
@@ -82,7 +82,12 @@ export const useStore = create<AppState>((set, get) => ({
   fetchTasks: async () => {
     try {
       const data = await api.getTasks();
-      set({ tasks: data });
+      if (Array.isArray(data)) {
+        set({ tasks: data });
+      } else {
+        console.warn("fetchTasks received invalid data format:", data);
+        set({ tasks: [] });
+      }
     } catch (error) {
       console.error(error);
     }
@@ -103,7 +108,7 @@ export const useStore = create<AppState>((set, get) => ({
   fetchLogs: async () => {
       try {
           const logs = await api.getSystemLogs();
-          set({ logs });
+          set({ logs: Array.isArray(logs) ? logs : [] });
       } catch (e) {
           console.error(e);
       }

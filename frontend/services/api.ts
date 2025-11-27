@@ -129,6 +129,7 @@ class ApiService {
               const urlStr = endpoint.startsWith('http') ? endpoint : `http://mock${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
               const url = new URL(urlStr);
               const path = url.pathname;
+              const method = options.method || 'GET';
 
               // AUTH
               if (path.includes('/auth/token')) {
@@ -146,7 +147,7 @@ class ApiService {
                   return;
               }
               // Drone Actions - Robust regex matching
-              if (path.match(/\/drones\/\d+\/(connect|disconnect|land|reboot)/) || (path.startsWith('/drones/') && options.method === 'POST')) {
+              if (path.match(/\/drones\/\d+\/(connect|disconnect|land|reboot)/) || (path.startsWith('/drones/') && method === 'POST')) {
                   resolve({ status: "success" } as any);
                   return;
               }
@@ -156,18 +157,18 @@ class ApiService {
               }
 
               // TASKS
-              if (path === '/tasks/' && options.method === 'GET') {
+              if (path === '/tasks/' && method === 'GET') {
                   resolve(MOCK_TASKS as any);
                   return;
               }
-              if (path === '/tasks/' && options.method === 'POST') {
+              if (path === '/tasks/' && method === 'POST') {
                   const body = JSON.parse(options.body as string);
                   const newTask = { ...body, id: Date.now(), created_at: new Date().toISOString() };
                   MOCK_TASKS.push(newTask);
                   resolve(newTask as any);
                   return;
               }
-              if (path.match(/\/tasks\/\d+/) && options.method === 'PUT') {
+              if (path.match(/\/tasks\/\d+/) && method === 'PUT') {
                   const id = parseInt(path.split('/')[2]);
                   const updates = JSON.parse(options.body as string);
                   MOCK_TASKS = MOCK_TASKS.map(t => t.id === id ? { ...t, ...updates } : t);
@@ -175,7 +176,7 @@ class ApiService {
                   return;
               }
               // Handle Delete for safety
-              if (path.match(/\/tasks\/\d+/) && options.method === 'DELETE') {
+              if (path.match(/\/tasks\/\d+/) && method === 'DELETE') {
                   const id = parseInt(path.split('/')[2]);
                   MOCK_TASKS = MOCK_TASKS.filter(t => t.id !== id);
                   resolve({ success: true } as any);
@@ -199,7 +200,7 @@ class ApiService {
                   // Handled in specific method below for complex logic
               }
 
-              console.warn(`Mock endpoint missing for: ${endpoint}`);
+              console.warn(`Mock endpoint missing for: ${endpoint} [${method}]`);
               // Fallback resolve to prevent crashing if minor endpoint missing
               resolve({} as any); 
           }, 300); // Latency
