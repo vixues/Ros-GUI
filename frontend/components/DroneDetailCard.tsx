@@ -120,26 +120,30 @@ export const DroneDetailCard: React.FC<DroneDetailCardProps> = ({ drone, onOpenW
           </button>
       </div>
 
-      {/* Task List */}
-      <div className="p-3 bg-zinc-900/50 flex-1">
-          <div className="flex items-center gap-1.5 mb-2">
+      {/* Task List - Optimized for Scrolling */}
+      <div className="p-3 bg-zinc-900/50 flex-1 flex flex-col min-h-[100px]">
+          <div className="flex items-center gap-1.5 mb-2 shrink-0">
               <Target size={12} className="text-zinc-400" />
               <span className="text-[10px] font-bold text-zinc-400 uppercase">Active Directives</span>
+              <span className="ml-auto text-[9px] text-zinc-600 bg-zinc-900 px-1 rounded">{activeTasks.length}</span>
           </div>
           
-          <div className="space-y-2 max-h-[80px] overflow-y-auto custom-scrollbar">
+          <div className="space-y-2 overflow-y-auto pr-1 flex-1 max-h-[120px] custom-scrollbar">
               {activeTasks.length > 0 ? (
                   activeTasks.map(task => (
-                      <div key={task.id} className="flex items-start gap-2 bg-black/40 p-1.5 rounded border border-zinc-800">
-                          {task.status === 'IN_PROGRESS' ? <PlayCircle size={10} className="text-blue-400 mt-0.5" /> : <Clock size={10} className="text-zinc-500 mt-0.5" />}
-                          <div>
-                              <div className="text-[10px] font-bold text-zinc-200 leading-none">{task.title}</div>
-                              <div className="text-[9px] text-zinc-500 leading-none mt-1">{task.status}</div>
+                      <div key={task.id} className="flex items-start gap-2 bg-black/40 p-2 rounded border border-zinc-800 hover:border-zinc-700 transition-colors">
+                          {task.status === 'IN_PROGRESS' ? <PlayCircle size={10} className="text-blue-400 mt-0.5 shrink-0" /> : <Clock size={10} className="text-zinc-500 mt-0.5 shrink-0" />}
+                          <div className="min-w-0">
+                              <div className="text-[10px] font-bold text-zinc-200 leading-tight truncate">{task.title}</div>
+                              <div className="text-[9px] text-zinc-500 leading-tight mt-0.5 flex items-center gap-1">
+                                <span className={cn("w-1.5 h-1.5 rounded-full", task.status === 'IN_PROGRESS' ? "bg-blue-500 animate-pulse" : "bg-zinc-600")}></span>
+                                {task.status.replace('_', ' ')}
+                              </div>
                           </div>
                       </div>
                   ))
               ) : (
-                  <div className="text-[10px] text-zinc-600 italic py-2 text-center border border-dashed border-zinc-800 rounded">
+                  <div className="h-full flex flex-col items-center justify-center text-[10px] text-zinc-600 italic py-2 border border-dashed border-zinc-800 rounded bg-white/5">
                       No active tasks assigned
                   </div>
               )}
@@ -147,7 +151,7 @@ export const DroneDetailCard: React.FC<DroneDetailCardProps> = ({ drone, onOpenW
       </div>
 
       {/* Footer Actions */}
-      <div className="p-2 bg-zinc-950 border-t border-zinc-800 grid grid-cols-2 gap-2">
+      <div className="p-2 bg-zinc-950 border-t border-zinc-800 grid grid-cols-2 gap-2 mt-auto">
           <button 
             onClick={() => handleAction('rtl')}
             className="flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-bold py-1.5 rounded transition-colors"

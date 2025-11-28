@@ -29,7 +29,6 @@ declare global {
       points: any;
       gridHelper: any;
       axesHelper: any;
-      // Added missing types
       instancedMesh: any;
       spotLight: any;
       hemisphereLight: any;
@@ -56,6 +55,7 @@ const METERS_PER_DEG = 111000;
 // Simple Instance for distant/many objects
 const DroneModel = ({ drone, isSelected, onSelect, swarmCenter }: { drone: Drone, isSelected: boolean, onSelect: (id: number) => void, swarmCenter: {lat: number, lng: number} }) => {
   const groupRef = useRef<THREE.Group>(null);
+  const visualRef = useRef<THREE.Group>(null);
   
   // Project GPS to Local 3D Space (Meters relative to center)
   const targetPosition = useMemo(() => {
@@ -87,22 +87,42 @@ const DroneModel = ({ drone, isSelected, onSelect, swarmCenter }: { drone: Drone
   }, [drone.status]);
 
   useFrame((state, delta) => {
-    if (!groupRef.current) return;
-    // Faster lerp for position updates
+    if (!groupRef.current || !visualRef.current) return;
+    
+    // Smooth Position Update
     groupRef.current.position.lerp(targetPosition, delta * 4);
     
-    // Subtle hover animation
+    // Adaptive Scaling Logic
+    // Calculate distance from camera to drone
+    const distance = state.camera.position.distanceTo(groupRef.current.position);
+    
+    // Scale factor: Base scale (2) + distance-based growth
+    // This ensures drones look like distinct markers even from far away (zoomed out map)
+    const scaleFactor = Math.max(2, distance / 30); 
+    visualRef.current.scale.setScalar(scaleFactor);
+
+    // Hover Animation (applied to visual mesh only to keep position true)
     if(drone.status === DroneStatus.FLYING) {
-        groupRef.current.position.y += Math.sin(state.clock.elapsedTime * 2 + drone.id) * 0.02;
+        // Amplitude also scales slightly so movement is visible from far away
+        const hoverAmp = 0.5 + (scaleFactor * 0.05);
+        visualRef.current.position.y = Math.sin(state.clock.elapsedTime * 3 + drone.id) * hoverAmp;
+    } else {
+        visualRef.current.position.y = 0;
     }
   });
 
   return (
     <group>
-        {/* Ground Line */}
+        {/* Ground Line - Kept outside scaling group to maintain hairline thickness */}
         {isSelected && (
            <group>
-             <Line points={[targetPosition, new THREE.Vector3(targetPosition.x, 0, targetPosition.z)]} color={statusColor} opacity={0.5} transparent />
+             <Line 
+                points={[targetPosition, new THREE.Vector3(targetPosition.x, 0, targetPosition.z)]} 
+                color={statusColor} 
+                opacity={0.5} 
+                transparent 
+                lineWidth={1}
+             />
              <mesh position={[targetPosition.x, 0.1, targetPosition.z]} rotation={[-Math.PI/2, 0, 0]}>
                 <circleGeometry args={[2, 16]} />
                 <meshBasicMaterial color={statusColor} opacity={0.3} transparent />
@@ -111,39 +131,42 @@ const DroneModel = ({ drone, isSelected, onSelect, swarmCenter }: { drone: Drone
         )}
 
         <group 
-        ref={groupRef} 
-        onClick={(e) => { e.stopPropagation(); onSelect(drone.id); }}
-        onPointerOver={() => document.body.style.cursor = 'pointer'}
-        onPointerOut={() => document.body.style.cursor = 'auto'}
+            ref={groupRef} 
+            onClick={(e) => { e.stopPropagation(); onSelect(drone.id); }}
+            onPointerOver={() => document.body.style.cursor = 'pointer'}
+            onPointerOut={() => document.body.style.cursor = 'auto'}
         >
         
-        {/* Selection Ring */}
-        {isSelected && (
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1, 0]}>
-                <ringGeometry args={[3, 3.5, 32]} />
-                <meshBasicMaterial color={statusColor} opacity={0.8} transparent side={THREE.DoubleSide} />
-            </mesh>
-        )}
+        {/* Scaled Visual Group */}
+        <group ref={visualRef}>
+            {/* Selection Ring */}
+            {isSelected && (
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.6, 0]}>
+                    <ringGeometry args={[1.2, 1.5, 32]} />
+                    <meshBasicMaterial color={statusColor} opacity={0.8} transparent side={THREE.DoubleSide} />
+                </mesh>
+            )}
 
-        {/* Drone Body (Scaled to approx 1m size) */}
-        <mesh scale={2}> 
-            <boxGeometry args={[1, 0.2, 1]} />
-            <meshStandardMaterial color={statusColor} emissive={statusColor} emissiveIntensity={0.6} />
-        </mesh>
-        
-        {/* Rotors */}
-        <group scale={2}>
-            <mesh position={[0.6, 0.1, 0.6]}><cylinderGeometry args={[0.4, 0.4, 0.05]} /><meshBasicMaterial color="#333" /></mesh>
-            <mesh position={[-0.6, 0.1, 0.6]}><cylinderGeometry args={[0.4, 0.4, 0.05]} /><meshBasicMaterial color="#333" /></mesh>
-            <mesh position={[0.6, 0.1, -0.6]}><cylinderGeometry args={[0.4, 0.4, 0.05]} /><meshBasicMaterial color="#333" /></mesh>
-            <mesh position={[-0.6, 0.1, -0.6]}><cylinderGeometry args={[0.4, 0.4, 0.05]} /><meshBasicMaterial color="#333" /></mesh>
+            {/* Drone Body */}
+            <mesh> 
+                <boxGeometry args={[1, 0.2, 1]} />
+                <meshStandardMaterial color={statusColor} emissive={statusColor} emissiveIntensity={0.6} />
+            </mesh>
+            
+            {/* Rotors */}
+            <group>
+                <mesh position={[0.6, 0.1, 0.6]}><cylinderGeometry args={[0.4, 0.4, 0.05]} /><meshBasicMaterial color="#333" /></mesh>
+                <mesh position={[-0.6, 0.1, 0.6]}><cylinderGeometry args={[0.4, 0.4, 0.05]} /><meshBasicMaterial color="#333" /></mesh>
+                <mesh position={[0.6, 0.1, -0.6]}><cylinderGeometry args={[0.4, 0.4, 0.05]} /><meshBasicMaterial color="#333" /></mesh>
+                <mesh position={[-0.6, 0.1, -0.6]}><cylinderGeometry args={[0.4, 0.4, 0.05]} /><meshBasicMaterial color="#333" /></mesh>
+            </group>
         </group>
 
         {isSelected && (
-            <Html position={[0, 4, 0]} center distanceFactor={40} style={{ pointerEvents: 'none' }}>
-                <div className="bg-black/90 px-3 py-1.5 rounded-sm border-l-2 border-white flex flex-col min-w-[100px]">
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase">{drone.name}</span>
-                    <span className="text-xs text-white font-mono font-bold">Alt: {drone.altitude?.toFixed(1)}m</span>
+            <Html position={[0, 4, 0]} center distanceFactor={60} style={{ pointerEvents: 'none', zIndex: 50 }}>
+                <div className="bg-black/80 backdrop-blur-sm px-3 py-1.5 rounded-sm border-l-2 border-white flex flex-col min-w-[120px] shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">{drone.name}</span>
+                    <span className="text-xs text-white font-mono font-bold">ALT: {drone.altitude?.toFixed(0)}m</span>
                 </div>
             </Html>
         )}
@@ -164,25 +187,27 @@ export const SwarmVisualizer: React.FC<SwarmVisualizerProps> = ({ drones, select
   return (
     <div className="w-full h-full relative bg-zinc-950">
       <Canvas>
-        <PerspectiveCamera makeDefault position={[100, 100, 100]} fov={50} />
+        {/* Increased far plane to allow seeing drones from very far away */}
+        <PerspectiveCamera makeDefault position={[100, 100, 100]} fov={50} far={10000} />
+        
         <OrbitControls 
           maxPolarAngle={Math.PI / 2 - 0.05} 
           minDistance={10}
-          maxDistance={2000}
+          maxDistance={5000} /* Increased max distance for "strategic" view */
           enableDamping
           target={[0, 0, 0]}
         />
         
         <ambientLight intensity={0.2} />
         <directionalLight position={[50, 100, 50]} intensity={1.5} />
-        <pointLight position={[-50, 20, -50]} intensity={0.5} color="#blue" />
+        <pointLight position={[-50, 20, -50]} intensity={0.5} color="#3b82f6" />
         
-        <Stars radius={1500} depth={50} count={3000} factor={6} saturation={0} fade />
+        <Stars radius={3000} depth={100} count={5000} factor={6} saturation={0} fade />
         
-        {/* Scale grid to 100m sections */}
+        {/* Expanded Grid for larger play area */}
         <Grid 
             infiniteGrid 
-            fadeDistance={1500} 
+            fadeDistance={5000} 
             sectionColor="#3f3f46" 
             cellColor="#18181b" 
             sectionSize={100} 

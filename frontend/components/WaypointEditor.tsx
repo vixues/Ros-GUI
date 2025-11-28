@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Drone, Waypoint } from '../types';
-import { X, Save, Plus, MapPin, Trash2, Crosshair, ArrowUp, Navigation } from 'lucide-react';
+import { X, Save, Plus, MapPin, Trash2, Crosshair, ArrowUp, Navigation, LocateFixed } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Map, TileLayer, Marker, Polyline, divIcon, LeafletMouseEvent } from 'leaflet';
 import { useStore } from '../store/useStore';
@@ -28,14 +28,15 @@ export const WaypointEditor: React.FC<WaypointEditorProps> = ({ drone, onClose }
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
-    const startLat = drone.latitude || 35.0542;
-    const startLng = drone.longitude || -118.1523;
+    // Use drone location or fallback, but prioritize drone location significantly
+    const startLat = (drone.latitude && drone.latitude !== 0) ? drone.latitude : 35.0542;
+    const startLng = (drone.longitude && drone.longitude !== 0) ? drone.longitude : -118.1523;
 
     const map = new Map(mapRef.current, {
         zoomControl: false,
         attributionControl: false,
         center: [startLat, startLng],
-        zoom: 15
+        zoom: 16 // Zoomed in closer for mission planning
     });
 
     new TileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -58,6 +59,15 @@ export const WaypointEditor: React.FC<WaypointEditorProps> = ({ drone, onClose }
     });
 
     mapInstanceRef.current = map;
+
+    // Initial Marker for Drone Position
+    const droneIcon = divIcon({
+        className: 'drone-start-marker',
+        html: `<div style="width: 12px; height: 12px; background: #10b981; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px #10b981;"></div>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6]
+    });
+    new Marker([startLat, startLng], { icon: droneIcon, interactive: false }).addTo(map);
 
     return () => {
         map.remove();
@@ -149,6 +159,53 @@ export const WaypointEditor: React.FC<WaypointEditorProps> = ({ drone, onClose }
       if (selectedWpId === id) setSelectedWpId(null);
   };
 
+  const handleRecenter = () => {
+      if(mapInstanceRef.current && drone.latitude && drone.longitude) {
+          mapInstanceRef.current.flyTo([drone.latitude, drone.longitude], 17);
+      }
+  };
+
+  const handleAddWaypoint = () => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+
+      const center = map.getCenter();
+      
+      // If we have points, try to put next one slightly offset from last one, 
+      // UNLESS the map center is far away (user panned), then use map center
+      const lastWp = waypoints[waypoints.length - 1];
+      
+      let newLat = center.lat;
+      let newLng = center.lng;
+
+      // Logic: If map center is very close to last WP (user hasn't moved map), just offset
+      // Otherwise use where the user is looking
+      if (lastWp) {
+          const dist = Math.sqrt(Math.pow(center.lat - lastWp.lat, 2) + Math.pow(center.lng - lastWp.lng, 2));
+          if (dist < 0.0005) {
+              newLat = lastWp.lat + 0.0005; // Offset slightly North
+              newLng = lastWp.lng;
+          }
+      } else if (drone.latitude && drone.longitude) {
+          // If no waypoints, check distance to drone
+          const distToDrone = Math.sqrt(Math.pow(center.lat - drone.latitude, 2) + Math.pow(center.lng - drone.longitude, 2));
+           if (distToDrone < 0.0005) {
+               newLat = drone.latitude + 0.0005;
+               newLng = drone.longitude;
+           }
+      }
+
+      const newWp: Waypoint = {
+          id: `wp-${Date.now()}`,
+          lat: newLat,
+          lng: newLng,
+          alt: 30,
+          type: 'FLY_THROUGH',
+          speed: 10
+      };
+      setWaypoints(prev => [...prev, newWp]);
+  };
+
   const handleSave = async () => {
       setIsSaving(true);
       try {
@@ -208,19 +265,7 @@ export const WaypointEditor: React.FC<WaypointEditorProps> = ({ drone, onClose }
                     <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/30">
                         <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Flight Path Sequence</span>
                         <button 
-                            onClick={() => {
-                                // Add random point near last point or drone
-                                const last = waypoints[waypoints.length - 1] || { lat: drone.latitude || 0, lng: drone.longitude || 0 };
-                                const newWp: Waypoint = {
-                                    id: `wp-${Date.now()}`,
-                                    lat: last.lat + 0.001,
-                                    lng: last.lng + 0.001,
-                                    alt: 30,
-                                    type: 'FLY_THROUGH',
-                                    speed: 10
-                                };
-                                setWaypoints(prev => [...prev, newWp]);
-                            }}
+                            onClick={handleAddWaypoint}
                             className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded border border-zinc-700 transition-colors"
                             title="Add Waypoint"
                         >
@@ -325,14 +370,23 @@ export const WaypointEditor: React.FC<WaypointEditorProps> = ({ drone, onClose }
                 </div>
 
                 {/* Right Panel: Map */}
-                <div className="flex-1 relative bg-black">
+                <div className="flex-1 relative bg-black group">
                      <div ref={mapRef} className="absolute inset-0 z-0"></div>
                      
+                     {/* Overlay Controls */}
                      <div className="absolute top-4 left-4 z-[400] pointer-events-none">
                          <div className="bg-black/80 backdrop-blur px-3 py-1.5 rounded border border-white/10 text-white text-xs font-bold shadow-lg">
                             CLICK MAP TO ADD WAYPOINT
                          </div>
                      </div>
+
+                     <button 
+                        onClick={handleRecenter}
+                        className="absolute bottom-6 right-6 z-[400] bg-zinc-900/90 text-white p-2 rounded-lg border border-zinc-700 shadow-xl hover:bg-zinc-800 transition-colors"
+                        title="Recenter on Drone"
+                     >
+                        <LocateFixed size={20} />
+                     </button>
                 </div>
 
             </div>
