@@ -1,33 +1,34 @@
-# UAV Commander
+UAV Commander
 
-> 基于 LLM 的智能无人机集群控制 Multi-Agent 系统
-
----
-
-## 项目概述
-
-**UAV Commander** 是一个面向无人机集群（UAV Swarm）的智能控制框架，采用 **Multi-Agent Orchestration** 架构，将大语言模型（LLM）与无人机控制系统深度融合。系统通过将 Agent 工具化（Agent-as-Tool），实现主代理对多个专业子代理的动态调度，完成从自然语言指令到无人机行为的端到端转换。
-
-### 设计理念
-
-本项目借鉴了 Google Gemini CLI 的 Agent 框架设计模式，核心思想是：
-
-> **"将子代理封装为可执行工具（Invocation），使其能被其他代理安全、可控、可流式地调用"**
-
-### 核心特性
-
-| 特性 | 描述 |
-|------|------|
-| **Multi-Agent 编排** | Coordinator 主代理动态调度多个 Specialist 子代理 |
-| **Agent-as-Tool** | 子代理作为工具被调用，统一工具与代理的执行模型 |
-| **流式活动输出** | 子代理思考过程（Thought Chunks）实时流式传递至 UI |
-| **多级审批机制** | 危险操作需人工确认，支持 STRICT / NORMAL / YOLO 模式 |
-| **事件驱动架构** | 基于 EventBus 的状态发布与订阅机制 |
-| **ROS 2 原生集成** | 通过 Topics / Services / Actions 与无人机通信 |
+> LLM-Powered Intelligent UAV Swarm Control Multi-Agent System
 
 ---
 
-## 🏗️ 系统架构
+## Overview
+
+**UAV Commander** is an intelligent control framework for UAV swarms, built on a **Multi-Agent Orchestration** architecture that deeply integrates Large Language Models (LLMs) with drone control systems. By implementing an Agent-as-Tool pattern, the system enables a coordinator agent to dynamically dispatch multiple specialist sub-agents, achieving end-to-end conversion from natural language commands to drone behaviors.
+
+### Design Philosophy
+
+This project draws inspiration from the Google Gemini CLI Agent framework design pattern. The core concept is:
+
+> **"Encapsulate sub-agents as executable tools (Invocations), enabling safe, controlled, and streamable invocation by other agents"**
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-Agent Orchestration** | Coordinator agent dynamically dispatches multiple specialist sub-agents |
+| **Agent-as-Tool** | Sub-agents are invoked as tools, unifying tool and agent execution models |
+| **Streaming Activity Output** | Sub-agent thought processes (Thought Chunks) stream in real-time to UI |
+| **Multi-Level Approval** | Dangerous operations require human confirmation; supports STRICT / NORMAL / YOLO modes |
+| **Event-Driven Architecture** | EventBus-based state publishing and subscription mechanism |
+| **ROS 2 Native Integration** | Communication with drones via Topics / Services / Actions |
+
+---
+
+## 🏗️ System Architecture
+
 ```mermaid
 flowchart TD
 
@@ -35,7 +36,7 @@ flowchart TD
 %% 1 User Input
 %% ================================
 subgraph L1[1 User Input]
-    UI[用户输入：五架无人机编队前往坐标A 并执行区域搜索]
+    UI[User Input: Five drones form formation and fly to coordinate A for area search]
 end
 
 
@@ -43,7 +44,7 @@ end
 %% 2 Interface Layer
 %% ================================
 subgraph L2[2 Interface]
-    IF[CLI 或 GUI 接口]
+    IF[CLI or GUI Interface]
 end
 UI --> IF
 IF --> AE
@@ -57,15 +58,15 @@ subgraph L3[3 Core Agent System]
     AE[AgentExecutor]
 
     subgraph COORD[Coordinator Agent]
-        COF[意图理解<br/>任务分解<br/>子代理调度<br/>结果聚合]
+        COF[Intent Understanding<br/>Task Decomposition<br/>Sub-agent Dispatch<br/>Result Aggregation]
     end
 
     AE --> COORD
 
     subgraph SUB[Subagent Invocation]
-        F[Formation Agent<br/>队形计算 槽位分配 同步控制]
-        N[Navigation Agent<br/>路径规划 避障 轨迹优化]
-        S[Search Agent<br/>区域划分 搜索策略 目标识别]
+        F[Formation Agent<br/>Formation Calculation, Slot Assignment, Sync Control]
+        N[Navigation Agent<br/>Path Planning, Obstacle Avoidance, Trajectory Optimization]
+        S[Search Agent<br/>Area Division, Search Strategy, Target Recognition]
     end
 
     COORD --> F
@@ -73,9 +74,9 @@ subgraph L3[3 Core Agent System]
     COORD --> S
 
     subgraph SCHED[Core Tool Scheduler]
-        INV[参数构建 Schema 检查]
-        EXEC[安全检查 执行调用 状态更新]
-        RES[结果封装 回传 错误处理]
+        INV[Parameter Construction, Schema Validation]
+        EXEC[Safety Check, Execution, State Update]
+        RES[Result Packaging, Return, Error Handling]
         INV --> EXEC --> RES
     end
 
@@ -90,8 +91,8 @@ end
 %% 4 Tool Layer
 %% ================================
 subgraph L4[4 Tool Layer]
-    DT[DeviceTool<br/>设备控制]
-    ST[SwarmTool<br/>群体算法]
+    DT[DeviceTool<br/>Device Control]
+    ST[SwarmTool<br/>Swarm Algorithms]
 end
 
 SCHED --> DT
@@ -122,7 +123,8 @@ ROSCLIENT --> U1
 ROSCLIENT --> U2
 ROSCLIENT --> UN
 ```
-### 整体架构图
+
+### Architecture Diagram
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -130,26 +132,26 @@ ROSCLIENT --> UN
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌────────────────┐                                                          │
-│  │   User Input   │  "5架无人机编队飞往坐标A，到达后展开区域搜索"                │
-│  └───────┬────────┘                                                          │
+│  │   User Input   │  "5 drones fly in formation to coordinate A, then        │
+│  └───────┬────────┘   execute area search"                                   │
 │          │                                                                   │
 │          ▼                                                                   │
 │  ┌───────────────────────────────────────────────────────────────────────┐   │
 │  │                        CLI / GUI Interface                            │   │
 │  │                    (RequestContext, EventBus)                         │   │
-│  └───────────────────────────────────┬───────────────────────────────────┘   │
-│                                      │                                       │
-│  ╔═══════════════════════════════════╧═══════════════════════════════════╗   │
+│  └───────────────────────────────┬───────────────────────────────────────┘   │
+│                                  │                                           │
+│  ╔═══════════════════════════════╧═══════════════════════════════════════╗   │
 │  ║                         CORE AGENT SYSTEM                             ║   │
 │  ║  ┌─────────────────────────────────────────────────────────────────┐  ║   │
 │  ║  │                      AgentExecutor                              │  ║   │
 │  ║  │  ┌───────────────────────────────────────────────────────────┐  │  ║   │
 │  ║  │  │                 Coordinator Agent                         │  │  ║   │
 │  ║  │  │                                                           │  │  ║   │
-│  ║  │  │  • 理解用户意图 (Intent Understanding)                       │  │  ║   │
-│  ║  │  │  • 任务分解 (Task Decomposition)                            │  │  ║   │
-│  ║  │  │  • 子代理调度 (Subagent Dispatch）                           │  │  ║   │
-│  ║  │  │  • 结果聚合 (Result Aggregation)                            │  │  ║   │
+│  ║  │  │  • Intent Understanding                                   │  │  ║   │
+│  ║  │  │  • Task Decomposition                                     │  │  ║   │
+│  ║  │  │  • Subagent Dispatch                                      │  │  ║   │
+│  ║  │  │  • Result Aggregation                                     │  │  ║   │
 │  ║  │  │                                                           │  │  ║   │
 │  ║  │  │  LLM: OpenAI / Claude / Gemini / Local                    │  │  ║   │
 │  ║  │  └───────────────────────────────────────────────────────────┘  │  ║   │
@@ -165,9 +167,12 @@ ROSCLIENT --> UN
 │  ║  │  │  │ Formation     │  │ Navigation    │  │ Search      │  │    │  ║   │
 │  ║  │  │  │ Agent         │  │ Agent         │  │ Agent       │  │    │  ║   │
 │  ║  │  │  │               │  │               │  │             │  │    │  ║   │
-│  ║  │  │  │ • 队形计算      │  │ • 路径规划      │  │ • 区域划分    │  │    │  ║   │
-│  ║  │  │  │ • 槽位分配      │  │ • 避障处理      │  │ • 搜索策略    │  │    │  ║   │
-│  ║  │  │  │ • 同步控制      │  │ • 轨迹优化      │  │ • 目标识别    │  │    │  ║   │
+│  ║  │  │  │ • Formation   │  │ • Path        │  │ • Area      │  │    │  ║   │
+│  ║  │  │  │   Calculation │  │   Planning    │  │   Division  │  │    │  ║   │
+│  ║  │  │  │ • Slot        │  │ • Obstacle    │  │ • Search    │  │    │  ║   │
+│  ║  │  │  │   Assignment  │  │   Avoidance   │  │   Strategy  │  │    │  ║   │
+│  ║  │  │  │ • Sync        │  │ • Trajectory  │  │ • Target    │  │    │  ║   │
+│  ║  │  │  │   Control     │  │   Optimization│  │   Detection │  │    │  ║   │
 │  ║  │  │  └───────┬───────┘  └───────┬───────┘  └──────┬──────┘  │    │  ║   │
 │  ║  │  │          │                  │                 │         │    │  ║   │
 │  ║  │  │          └──────────────────┼─────────────────┘         │    │  ║   │
@@ -182,12 +187,15 @@ ROSCLIENT --> UN
 │  ║  │  │ Tool        │  │ Tool        │  │ Tool        │              │  ║   │
 │  ║  │  │ Invocation  │  │ Execution   │  │ Result      │              │  ║   │
 │  ║  │  │             │  │             │  │             │              │  ║   │
-│  ║  │  │ • 参数构建    │→ │ • 安全检查    │→ │ • 结果封装    │              │  ║   │
-│  ║  │  │ • Schema    │  │ • 执行调用    │  │ • LLM回传    │              │  ║   │
-│  ║  │  │   验证       │  │ • 状态更新    │  │ • 错误处理    │              │  ║   │
+│  ║  │  │ • Parameter │→ │ • Safety    │→ │ • Result    │              │  ║   │
+│  ║  │  │   Building  │  │   Check     │  │   Packaging │              │  ║   │
+│  ║  │  │ • Schema    │  │ • Execution │  │ • LLM       │              │  ║   │
+│  ║  │  │   Validation│  │ • State     │  │   Return    │              │  ║   │
+│  ║  │  │             │  │   Update    │  │ • Error     │              │  ║   │
+│  ║  │  │             │  │             │  │   Handling  │              │  ║   │
 │  ║  │  └─────────────┘  └─────────────┘  └─────────────┘              │  ║   │
 │  ║  │                                                                 │  ║   │
-│  ║  │  状态流转: Scheduled → Executing → Success / Error / Cancelled    │  ║   │
+│  ║  │  State Flow: Scheduled → Executing → Success / Error / Cancelled│  ║   │
 │  ║  └─────────────────────────────────────────────────────────────────┘  ║   │
 │  ╚═══════════════════════════════════════════════════════════════════════╝   │
 │                                      │                                       │
@@ -231,135 +239,135 @@ ROSCLIENT --> UN
 
 ---
 
-## 📁 项目结构
+## 📁 Project Structure
 
 ```
 uavcommander/
-├── core/                              # 核心模块
-│   ├── agent/                         # Agent 系统 ⭐
-│   │   ├── executor.py                # AgentExecutor - 驱动 Agent 运行主循环
-│   │   │                              # • 管理 LLM 推理 → 工具调用 → 结果回传 循环
-│   │   │                              # • 处理流式事件 (Content/ToolCall/Thought/Error)
+├── core/                              # Core Modules
+│   ├── agent/                         # Agent System ⭐
+│   │   ├── executor.py                # AgentExecutor - Drives Agent main loop
+│   │   │                              # • Manages LLM inference → tool call → result return cycle
+│   │   │                              # • Handles streaming events (Content/ToolCall/Thought/Error)
 │   │   │
-│   │   ├── scheduler.py               # CoreToolScheduler - 工具调度中枢 ⭐
-│   │   │                              # • 工具生命周期: Scheduled → Executing → Success/Error
-│   │   │                              # • 安全确认控制 (shouldConfirmExecute)
-│   │   │                              # • 执行前后钩子 (executeToolWithHooks)
-│   │   │                              # • 批量工具调用调度
+│   │   ├── scheduler.py               # CoreToolScheduler - Tool scheduling hub ⭐
+│   │   │                              # • Tool lifecycle: Scheduled → Executing → Success/Error
+│   │   │                              # • Safety confirmation control (shouldConfirmExecute)
+│   │   │                              # • Pre/post execution hooks (executeToolWithHooks)
+│   │   │                              # • Batch tool call scheduling
 │   │   │
-│   │   ├── task.py                    # Task - 任务状态机与事件发布
-│   │   │                              # • 任务状态: submitted → working → input-required → completed/failed
-│   │   │                              # • 工具调用注册与解析 (pendingToolCalls)
-│   │   │                              # • 事件发布到 EventBus
-│   │   │                              # • 工具确认处理 (ToolConfirmationOutcome)
+│   │   ├── task.py                    # Task - State machine and event publishing
+│   │   │                              # • Task states: submitted → working → input-required → completed/failed
+│   │   │                              # • Tool call registration and resolution (pendingToolCalls)
+│   │   │                              # • Event publishing to EventBus
+│   │   │                              # • Tool confirmation handling (ToolConfirmationOutcome)
 │   │   │
-│   │   ├── invocation.py              # SubagentInvocation - 子代理执行容器 ⭐
-│   │   │                              # • 将 AgentDefinition 封装为可调用工具
-│   │   │                              # • 初始化并运行 AgentExecutor
-│   │   │                              # • 流式传递子代理活动 (onActivity → THOUGHT_CHUNK)
-│   │   │                              # • 统一封装返回 ToolResult
+│   │   ├── invocation.py              # SubagentInvocation - Sub-agent execution container ⭐
+│   │   │                              # • Wraps AgentDefinition as callable tool
+│   │   │                              # • Initializes and runs AgentExecutor
+│   │   │                              # • Streams sub-agent activity (onActivity → THOUGHT_CHUNK)
+│   │   │                              # • Unified ToolResult packaging
 │   │   │
-│   │   ├── context.py                 # Context - 上下文管理
-│   │   │                              # • 对话历史维护
-│   │   │                              # • 上下文压缩 (ChatCompressed)
-│   │   │                              # • 多任务上下文隔离
+│   │   ├── context.py                 # Context - Context management
+│   │   │                              # • Conversation history maintenance
+│   │   │                              # • Context compression (ChatCompressed)
+│   │   │                              # • Multi-task context isolation
 │   │   │
-│   │   ├── registry.py                # AgentRegistry - Agent 注册表
-│   │   │                              # • Agent 定义注册与发现
-│   │   │                              # • Agent 能力描述 (Schema)
+│   │   ├── registry.py                # AgentRegistry - Agent registry
+│   │   │                              # • Agent definition registration and discovery
+│   │   │                              # • Agent capability descriptions (Schema)
 │   │   │
-│   │   ├── basellm.py                 # BaseLLM - LLM 抽象基类
-│   │   │                              # • 定义 LLM 接口规范
-│   │   │                              # • 流式输出支持
-│   │   │                              # • 故障转移机制
+│   │   ├── basellm.py                 # BaseLLM - LLM abstract base class
+│   │   │                              # • Defines LLM interface specification
+│   │   │                              # • Streaming output support
+│   │   │                              # • Failover mechanism
 │   │   │
-│   │   ├── llm.py                     # LLM 具体实现
-│   │   │                              # • OpenAI / Claude / Gemini 客户端
+│   │   ├── llm.py                     # LLM implementations
+│   │   │                              # • OpenAI / Claude / Gemini clients
 │   │   │                              # • Function Calling / Tool Use
-│   │   │                              # • 消息历史管理
+│   │   │                              # • Message history management
 │   │   │
-│   │   ├── prompts.py                 # Prompt 模板管理
-│   │   │                              # • System Prompt 定义
-│   │   │                              # • 工具描述生成
+│   │   ├── prompts.py                 # Prompt template management
+│   │   │                              # • System Prompt definitions
+│   │   │                              # • Tool description generation
 │   │   │                              # • Few-shot Examples
 │   │   │
-│   │   └── automator.py               # Automator - 自主执行逻辑
-│   │                                  # • 多轮对话自动驱动
-│   │                                  # • 任务完成判断
+│   │   └── automator.py               # Automator - Autonomous execution logic
+│   │                                  # • Multi-turn conversation auto-driving
+│   │                                  # • Task completion determination
 │   │
-│   ├── tools/                         # 工具层
-│   │   ├── tools.py                   # DeclarativeTool - 声明式工具基类
+│   ├── tools/                         # Tool Layer
+│   │   ├── tools.py                   # DeclarativeTool - Declarative tool base class
 │   │   │                              # • tool.build(args) → ToolInvocation
-│   │   │                              # • 三类工具: 普通/Modification/Editor
-│   │   │                              # • Schema 定义 (JSON Schema)
+│   │   │                              # • Three tool types: Normal/Modification/Editor
+│   │   │                              # • Schema definition (JSON Schema)
 │   │   │
-│   │   ├── tool_registry.py           # ToolRegistry - 工具注册表
-│   │   │                              # • 工具发现与注册
-│   │   │                              # • 按服务器分组 (MCP Server)
+│   │   ├── tool_registry.py           # ToolRegistry - Tool registry
+│   │   │                              # • Tool discovery and registration
+│   │   │                              # • Grouping by server (MCP Server)
 │   │   │
-│   │   ├── device_tool.py             # DeviceTool - 单机控制工具
+│   │   ├── device_tool.py             # DeviceTool - Single device control
 │   │   │                              # • arm/disarm, takeoff, land
 │   │   │                              # • goto, set_velocity
 │   │   │                              # • get_status, get_position
 │   │   │
-│   │   └── swarm_tool.py              # SwarmTool - 集群控制工具
+│   │   └── swarm_tool.py              # SwarmTool - Swarm control
 │   │                                  # • form_formation, disperse
 │   │                                  # • follow_leader, sync_action
 │   │                                  # • assign_tasks
 │   │
-│   ├── config/                        # 配置管理
-│   │   ├── settings.py                # 全局配置
-│   │   ├── llm_config.py              # LLM 配置 (模型/API Key/参数)
-│   │   ├── safety_policy.py           # 安全策略配置
-│   │   └── ros_params.py              # ROS 参数配置
+│   ├── config/                        # Configuration Management
+│   │   ├── settings.py                # Global settings
+│   │   ├── llm_config.py              # LLM configuration (model/API Key/parameters)
+│   │   ├── safety_policy.py           # Safety policy configuration
+│   │   └── ros_params.py              # ROS parameter configuration
 │   │
-│   └── schema/                        # 数据模式定义
-│       ├── messages.py                # 消息类型定义
-│       ├── events.py                  # 事件类型定义
-│       ├── tool_call.py               # 工具调用相关类型
-│       └── task_state.py              # 任务状态定义
+│   └── schema/                        # Data Schema Definitions
+│       ├── messages.py                # Message type definitions
+│       ├── events.py                  # Event type definitions
+│       ├── tool_call.py               # Tool call related types
+│       └── task_state.py              # Task state definitions
 │
-├── cli/                               # 命令行接口
+├── cli/                               # Command Line Interface
 │   ├── __init__.py
-│   ├── main.py                        # CLI 入口
-│   ├── repl.py                        # 交互式 REPL
-│   └── commands.py                    # 命令定义
+│   ├── main.py                        # CLI entry point
+│   ├── repl.py                        # Interactive REPL
+│   └── commands.py                    # Command definitions
 │
-├── utils/                             # 工具函数
+├── utils/                             # Utility Functions
 │   ├── __init__.py
-│   ├── logging.py                     # 日志系统
-│   ├── event_bus.py                   # 事件总线
-│   └── async_utils.py                 # 异步工具
+│   ├── logging.py                     # Logging system
+│   ├── event_bus.py                   # Event bus
+│   └── async_utils.py                 # Async utilities
 │
-├── tests/                             # 测试
-├── docs/                              # 文档
-├── requirements.txt                   # 依赖
+├── tests/                             # Tests
+├── docs/                              # Documentation
+├── requirements.txt                   # Dependencies
 └── README.md
 ```
 
 ---
 
-## 🔄 Multi-Agent 调度流程
+## 🔄 Multi-Agent Orchestration Flow
 
-### 完整调度循环
+### Complete Orchestration Loop
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Multi-Agent Orchestration Loop                       │
+│                         Multi-Agent Orchestration Loop                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-用户输入: "让5架无人机编队飞往A点"
+User Input: "Five drones form formation and fly to coordinate A"
          │
          ▼
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  Phase 1: 主代理思考 (Coordinator Planning)                               ║
+║  Phase 1: Coordinator Planning                                            ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                           ║
-║    Coordinator Agent (LLM 推理):                                          ║
-║    ┌─────────────────────────────────────────────────────────────────┐   ║
-║    │  1. 理解意图: 编队飞行任务                                       │   ║
-║    │  2. 分析需求: 需要编队控制能力                                   │   ║
-║    │  3. 决策: 调用 formation_agent 子代理                            │   ║
+║    Coordinator Agent (LLM Reasoning):                                     ║
+║    ┌──────────────────────────────────────────────────────────────────┐   ║
+║    │  1. Understand intent: Formation flight task                     │   ║
+║    │  2. Analyze requirements: Need formation control capability      │   ║
+║    │  3. Decision: Invoke formation_agent subagent                    │   ║
 ║    │                                                                  │   ║
 ║    │  Output:                                                         │   ║
 ║    │  {                                                               │   ║
@@ -367,145 +375,145 @@ uavcommander/
 ║    │      "name": "formation_agent",                                  │   ║
 ║    │      "args": {                                                   │   ║
 ║    │        "formation_type": "V_SHAPE",                              │   ║
-║    │        "target": {"lat": 31.2, "lon": 121.5, "alt": 50},        │   ║
-║    │        "uav_ids": ["uav_1", "uav_2", "uav_3", "uav_4", "uav_5"] │   ║
+║    │        "target": {"lat": 31.2, "lon": 121.5, "alt": 50},         │   ║
+║    │        "uav_ids": ["uav_1", "uav_2", "uav_3", "uav_4", "uav_5"]  │   ║
 ║    │      }                                                           │   ║
 ║    │    }]                                                            │   ║
 ║    │  }                                                               │   ║
-║    └─────────────────────────────────────────────────────────────────┘   ║
+║    └──────────────────────────────────────────────────────────────────┘   ║
 ║                                                                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
          │
-         │ 发现需要调用子代理
+         │ Subagent invocation required
          ▼
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  Phase 2: 创建 SubagentInvocation                                         ║
+║  Phase 2: Create SubagentInvocation                                       ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                           ║
 ║    CoreToolScheduler:                                                     ║
-║    ┌─────────────────────────────────────────────────────────────────┐   ║
-║    │  # 根据工具名找到对应的 AgentDefinition                          │   ║
+║    ┌──────────────────────────────────────────────────────────────────┐   ║
+║    │  # Find AgentDefinition by tool name                             │   ║
 ║    │  agent_def = agent_registry.get("formation_agent")               │   ║
 ║    │                                                                  │   ║
-║    │  # 创建 SubagentInvocation 实例                                  │   ║
+║    │  # Create SubagentInvocation instance                            │   ║
 ║    │  invocation = SubagentInvocation(                                │   ║
 ║    │      params=tool_call.args,                                      │   ║
 ║    │      definition=agent_def,                                       │   ║
 ║    │      config=config                                               │   ║
 ║    │  )                                                               │   ║
 ║    │                                                                  │   ║
-║    │  # 注册工具调用                                                   │   ║
+║    │  # Register tool call                                            │   ║
 ║    │  task.register_tool_call(tool_call_id, "scheduled")              │   ║
-║    └─────────────────────────────────────────────────────────────────┘   ║
+║    └──────────────────────────────────────────────────────────────────┘   ║
 ║                                                                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
          │
          ▼
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  Phase 3: 执行子代理                                                      ║
+║  Phase 3: Execute Subagent                                                ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                           ║
 ║    invocation.execute():                                                  ║
-║    ┌─────────────────────────────────────────────────────────────────┐   ║
+║    ┌──────────────────────────────────────────────────────────────────┐   ║
 ║    │                                                                  │   ║
-║    │  update_output("🚀 Subagent starting: formation_agent...")       │   ║
+║    │  update_output("Subagent starting: formation_agent...")          │   ║
 ║    │                                                                  │   ║
-║    │  # 创建子代理执行器                                               │   ║
+║    │  # Create subagent executor                                      │   ║
 ║    │  executor = AgentExecutor.create(                                │   ║
 ║    │      agent_def=agent_def,                                        │   ║
 ║    │      config=config                                               │   ║
 ║    │  )                                                               │   ║
 ║    │                                                                  │   ║
-║    │  # 绑定活动回调 - 流式输出子代理思考过程                          │   ║
+║    │  # Bind activity callback - stream subagent thought process      │   ║
 ║    │  executor.on_activity = lambda event:                            │   ║
 ║    │      if event.type == THOUGHT_CHUNK:                             │   ║
-║    │          update_output(f"🤖💭 {event.content}")                  │   ║
+║    │          update_output(f"{event.content}")                       │   ║
 ║    │                                                                  │   ║
-║    │  # 运行子代理                                                    │   ║
+║    │  # Run subagent                                                  │   ║
 ║    │  result = await executor.run()                                   │   ║
 ║    │                                                                  │   ║
-║    │  # 子代理内部可能继续调用工具                                     │   ║
+║    │  # Subagent may continue calling tools internally                │   ║
 ║    │  # Formation Agent → SwarmTool.form_formation()                  │   ║
 ║    │  # Formation Agent → DeviceTool.goto() × 5                       │   ║
 ║    │                                                                  │   ║
-║    └─────────────────────────────────────────────────────────────────┘   ║
+║    └──────────────────────────────────────────────────────────────────┘   ║
 ║                                                                           ║
-║    UI 实时显示:                                                           ║
-║    ┌─────────────────────────────────────────────────────────────────┐   ║
-║    │  🚀 Subagent starting: formation_agent...                        │   ║
-║    │  🤖💭 分析编队需求: 5架无人机 V形编队                             │   ║
-║    │  🤖💭 计算队形参数: 翼展角度 60°, 间距 10m                        │   ║
-║    │  🤖💭 分配槽位: UAV1→领航, UAV2/3→左翼, UAV4/5→右翼              │   ║
-║    │  🔧 调用工具: swarm_tool.form_formation()                        │   ║
-║    │  ✅ 编队指令已下发                                               │   ║
-║    └─────────────────────────────────────────────────────────────────┘   ║
+║    Real-time UI Display:                                                  ║
+║    ┌──────────────────────────────────────────────────────────────────┐   ║
+║    │  Subagent starting: formation_agent...                           │   ║
+║    │  Analyzing formation requirements: 5 UAVs V-shape                │   ║
+║    │  Calculating formation params: 60° angle, 10m spacing            │   ║
+║    │  Assigning slots: UAV1→Lead, UAV2/3→Left, UAV4/5→Right           │   ║
+║    │  Calling tool: swarm_tool.form_formation()                       │   ║
+║    │  Formation command dispatched                                    │   ║
+║    └──────────────────────────────────────────────────────────────────┘   ║
 ║                                                                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
          │
          ▼
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  Phase 4: 子代理返回结果                                                  ║
+║  Phase 4: Subagent Returns Result                                         ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                           ║
-║    SubagentInvocation 封装 ToolResult:                                    ║
-║    ┌─────────────────────────────────────────────────────────────────┐   ║
+║    SubagentInvocation wraps ToolResult:                                   ║
+║    ┌──────────────────────────────────────────────────────────────────┐   ║
 ║    │  {                                                               │   ║
 ║    │    "llm_content": [                                              │   ║
 ║    │      {                                                           │   ║
 ║    │        "type": "text",                                           │   ║
-║    │        "text": "Subagent finished. V形编队已建立，5架无人机正在   │   ║
-║    │                 向目标点飞行。预计到达时间: 3分钟。"              │   ║
+║    │        "text": "Subagent finished. V-formation established,      │   ║
+║    │                 5 UAVs flying to target. ETA: 3 minutes."        │   ║
 ║    │      }                                                           │   ║
 ║    │    ],                                                            │   ║
-║    │    "return_display": "✅ 编队飞行任务已启动",                     │   ║
+║    │    "return_display": "Formation flight task initiated",          │   ║
 ║    │    "metadata": {                                                 │   ║
 ║    │      "formation_status": "FORMED",                               │   ║
 ║    │      "eta_seconds": 180,                                         │   ║
 ║    │      "uav_assignments": {...}                                    │   ║
 ║    │    }                                                             │   ║
 ║    │  }                                                               │   ║
-║    └─────────────────────────────────────────────────────────────────┘   ║
+║    └──────────────────────────────────────────────────────────────────┘   ║
 ║                                                                           ║
-║    Scheduler 更新工具状态: "executing" → "success"                        ║
-║    Task 解析工具调用: task.resolve_tool_call(tool_call_id)                ║
+║    Scheduler updates tool status: "executing" → "success"                 ║
+║    Task resolves tool call: task.resolve_tool_call(tool_call_id)          ║
 ║                                                                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
          │
          ▼
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  Phase 5: 主代理继续推理                                                  ║
+║  Phase 5: Coordinator Continues Reasoning                                 ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                           ║
-║    Coordinator Agent 获得子代理结果后:                                    ║
-║    ┌─────────────────────────────────────────────────────────────────┐   ║
-║    │  # 工具结果作为新的上下文输入 LLM                                 │   ║
+║    Coordinator Agent after receiving subagent result:                     ║
+║    ┌──────────────────────────────────────────────────────────────────┐   ║
+║    │  # Tool result as new context input to LLM                       │   ║
 ║    │  llm_input = [                                                   │   ║
 ║    │      *previous_context,                                          │   ║
-║    │      {"role": "tool", "content": tool_result.llm_content}       │   ║
+║    │      {"role": "tool", "content": tool_result.llm_content}        │   ║
 ║    │  ]                                                               │   ║
 ║    │                                                                  │   ║
-║    │  # LLM 继续推理                                                   │   ║
+║    │  # LLM continues reasoning                                       │   ║
 ║    │  response = await llm.generate(llm_input)                        │   ║
 ║    │                                                                  │   ║
-║    │  # 判断: 是否需要调用更多工具? 还是任务完成?                       │   ║
+║    │  # Determine: Need more tool calls? Or task complete?            │   ║
 ║    │  if response.has_tool_calls:                                     │   ║
-║    │      # 回到 Phase 2                                              │   ║
+║    │      # Return to Phase 2                                         │   ║
 ║    │  else:                                                           │   ║
-║    │      # 返回最终结果给用户                                         │   ║
+║    │      # Return final result to user                               │   ║
 ║    │      return response.content                                     │   ║
-║    └─────────────────────────────────────────────────────────────────┘   ║
+║    └──────────────────────────────────────────────────────────────────┘   ║
 ║                                                                           ║
-║    最终输出:                                                              ║
-║    ┌─────────────────────────────────────────────────────────────────┐   ║
-║    │  ✅ 编队飞行任务已启动！                                          │   ║
+║    Final Output:                                                          ║
+║    ┌──────────────────────────────────────────────────────────────────┐   ║
+║    │  Formation flight task initiated!                                │   ║
 ║    │                                                                  │   ║
-║    │  5架无人机已建立V形编队，正在向目标点A飞行。                       │   ║
-║    │  • 编队类型: V形 (翼展角60°, 间距10m)                             │   ║
-║    │  • 领航机: UAV-1                                                 │   ║
-║    │  • 预计到达时间: 3分钟                                            │   ║
+║    │  5 UAVs established V-formation, flying to target point A.       │   ║
+║    │  • Formation type: V-shape (60° angle, 10m spacing)              │   ║
+║    │  • Lead aircraft: UAV-1                                          │   ║
+║    │  • Estimated arrival: 3 minutes                                  │   ║
 ║    │                                                                  │   ║
-║    │  您可以随时说"查看编队状态"或"紧急停止"。                          │   ║
-║    └─────────────────────────────────────────────────────────────────┘   ║
+║    │  You can say "check formation status" or "emergency stop".       │   ║
+║    └──────────────────────────────────────────────────────────────────┘   ║
 ║                                                                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 ```
@@ -514,58 +522,59 @@ uavcommander/
 
 ## 🛡️ 安全设计
 
-### 审批模式 (ApprovalMode)
+### Approval Modes
 
-参考 task.py 中的设计，系统支持三种审批模式：
+Based on the design in task.py, the system supports three approval modes:
 
 ```python
 from enum import Enum
 
 class ApprovalMode(Enum):
-    STRICT = "strict"       # 所有操作需人工确认
-    NORMAL = "normal"       # 仅危险操作需确认 (默认)
-    YOLO = "yolo"           # 自动批准所有操作 (仅限仿真)
+    STRICT = "strict"       # All operations require manual confirmation
+    NORMAL = "normal"       # Only dangerous operations require confirmation (default)
+    YOLO = "yolo"           # Auto-approve all operations (simulation only)
 ```
 
-### 工具确认流程
+### Tool Confirmation Flow
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                       Tool Confirmation Flow                              │
+│                       Tool Confirmation Flow                             │
 └──────────────────────────────────────────────────────────────────────────┘
 
-         LLM 请求调用工具: device_tool.takeoff(altitude=50)
+         LLM requests tool call: device_tool.takeoff(altitude=50)
                               │
                               ▼
          ┌────────────────────────────────────────┐
          │  Scheduler: shouldConfirmExecute()?    │
          │                                        │
-         │  检查:                                 │
-         │  • 工具类型 (Modification/Normal)      │
-         │  • 当前 ApprovalMode                   │
-         │  • 操作风险等级                        │
+         │  Check:                                │
+         │  • Tool type (Modification/Normal)     │
+         │  • Current ApprovalMode                │
+         │  • Operation risk level                │
          └───────────────┬────────────────────────┘
                          │
           ┌──────────────┼──────────────┐
           ▼              ▼              ▼
     ┌──────────┐   ┌──────────┐   ┌──────────┐
-    │ 无需确认  │   │ 需要确认  │   │ 自动确认  │
+    │ No       │   │ Requires │   │ Auto     │
+    │ Confirm  │   │ Confirm  │   │ Approve  │
     │ (Normal  │   │ (STRICT  │   │ (YOLO    │
-    │  工具)   │   │  或危险   │   │  模式)   │
-    │          │   │  操作)   │   │          │
+    │  tool)   │   │  or      │   │  mode)   │
+    │          │   │  danger) │   │          │
     └────┬─────┘   └────┬─────┘   └────┬─────┘
          │              │              │
          │              ▼              │
          │   ┌────────────────────┐    │
-         │   │  发布状态更新:      │    │
+         │   │  Publish status:   │    │
          │   │  awaiting_approval │    │
          │   │                    │    │
-         │   │  UI 显示确认对话框  │    │
+         │   │  UI shows dialog   │    │
          │   └─────────┬──────────┘    │
          │             │               │
          │             ▼               │
          │   ┌────────────────────┐    │
-         │   │   用户选择:         │    │
+         │   │   User choice:     │    │
          │   │                    │    │
          │   │   • proceed_once   │    │
          │   │   • proceed_always │    │
@@ -576,26 +585,26 @@ class ApprovalMode(Enum):
          └─────────────┼───────────────┘
                        ▼
               ┌────────────────┐
-              │  执行工具调用   │
-              │  或取消操作     │
+              │  Execute tool  │
+              │  or cancel     │
               └────────────────┘
 ```
 
-### 多层安全机制
+### Multi-Layer Safety Mechanisms
 
-| 层级 | 名称 | 触发时机 | 行为 |
-|------|------|----------|------|
-| L1 | **ApprovalGuard** | 工具调用前 | 危险操作弹出确认 |
-| L2 | **ParameterGuard** | 参数验证时 | 边界检查，拒绝非法参数 |
-| L3 | **GeofenceGuard** | 位置计算后 | 禁飞区检测，自动规避 |
-| L4 | **CollisionGuard** | 轨迹规划时 | 碰撞预测，路径重规划 |
-| L5 | **EmergencyStop** | 任何时刻 | 全局/单机紧急停止 |
+| Layer | Name | Trigger | Behavior |
+|-------|------|---------|----------|
+| L1 | **ApprovalGuard** | Before tool call | Prompt confirmation for dangerous operations |
+| L2 | **ParameterGuard** | Parameter validation | Boundary checks, reject invalid parameters |
+| L3 | **GeofenceGuard** | After position calculation | No-fly zone detection, automatic avoidance |
+| L4 | **CollisionGuard** | During trajectory planning | Collision prediction, path replanning |
+| L5 | **EmergencyStop** | Any time | Global/individual emergency stop |
 
-### 危险操作分类
+### Dangerous Operation Classification
 
 ```python
 DANGEROUS_OPERATIONS = {
-    # 高风险 - 必须确认
+    # High risk - Must confirm
     "HIGH": [
         "device_tool.arm",
         "device_tool.takeoff",
@@ -603,34 +612,34 @@ DANGEROUS_OPERATIONS = {
         "swarm_tool.disperse",
     ],
     
-    # 中风险 - NORMAL 模式需确认
+    # Medium risk - Requires confirmation in NORMAL mode
     "MEDIUM": [
         "device_tool.goto",
         "device_tool.set_velocity",
         "swarm_tool.sync_action",
     ],
     
-    # 低风险 - 仅 STRICT 模式确认
+    # Low risk - Only confirm in STRICT mode
     "LOW": [
         "device_tool.get_status",
-        "device_tool.land",  # 降落相对安全
+        "device_tool.land",  # Landing is relatively safe
     ]
 }
 ```
 
 ---
 
-## 📊 任务状态机
+## 📊 Task State Machine
 
-基于 task.py 参考实现，定义任务状态流转：
+Based on the task.py reference implementation, task state transitions are defined as follows:
 
 ```
                          ┌─────────────────────────────────────────┐
-                         │              Task States                 │
+                         │              Task States                │
                          └─────────────────────────────────────────┘
 
                               ┌──────────────┐
-              任务创建 ──────→│   SUBMITTED  │
+              Task created ──→│   SUBMITTED  │
                               └──────┬───────┘
                                      │
                                      │ start()
@@ -643,8 +652,8 @@ DANGEROUS_OPERATIONS = {
           │         │                │                │            │
           │         ▼                ▼                ▼            │
           │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-          │  │ LLM 推理中   │  │ 工具执行中  │  │ 等待工具    │     │
-          │  │             │  │             │  │ 完成        │     │
+          │  │ LLM         │  │ Tool        │  │ Waiting for │     │
+          │  │ Reasoning   │  │ Executing   │  │ Tool        │     │
           │  │ (streaming) │  │ (executing) │  │ (pending)   │     │
           │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘     │
           │         │                │                │            │
@@ -653,52 +662,52 @@ DANGEROUS_OPERATIONS = {
           │         ┌────────────────┼────────────────┐            │
           │         ▼                ▼                ▼            │
           │  ┌─────────────┐  ┌─────────────────┐  ┌───────────┐   │
-          │  │ 需要更多    │  │ INPUT_REQUIRED  │  │ 工具调用  │   │
-          │  │ 工具调用    │  │ (等待人工确认)  │  │ 成功      │   │
+          │  │ Need more   │  │ INPUT_REQUIRED  │  │ Tool call │   │
+          │  │ tool calls  │  │ (await confirm) │  │ success   │   │
           │  └──────┬──────┘  └────────┬────────┘  └─────┬─────┘   │
           │         │                  │                 │         │
           └─────────┘                  │                 └─────────┘
                                        │
-                          用户确认 / 用户输入
+                          User confirmation / User input
                                        │
                     ┌──────────────────┼──────────────────┐
                     ▼                  ▼                  ▼
              ┌─────────────┐   ┌─────────────┐    ┌─────────────┐
              │  COMPLETED  │   │   FAILED    │    │  CANCELLED  │
              │             │   │             │    │             │
-             │  任务成功   │   │ 任务失败    │    │ 用户取消    │
+             │  Success    │   │  Failed     │    │  Cancelled  │
              └─────────────┘   └─────────────┘    └─────────────┘
 ```
 
-### 事件类型 (参考 CoderAgentEvent)
+### Event Types (Reference: CoderAgentEvent)
 
 ```python
 class AgentEvent(Enum):
-    # 状态变更
+    # State changes
     STATE_CHANGE = "state_change"
     
-    # 内容输出
+    # Content output
     TEXT_CONTENT = "text_content"
     THOUGHT = "thought"
     
-    # 工具相关
+    # Tool related
     TOOL_CALL_UPDATE = "tool_call_update"
     TOOL_CALL_CONFIRMATION = "tool_call_confirmation"
     
-    # 其他
+    # Other
     CITATION = "citation"
     ERROR = "error"
 ```
 
 ---
 
-## 🔧 核心组件设计
+## 🔧 Core Component Design
 
 ### 1. AgentExecutor
 
 ```python
 class AgentExecutor:
-    """Agent 执行器 - 驱动 Agent 运行主循环"""
+    """Agent Executor - Drives the agent main loop"""
     
     def __init__(self, agent_def: AgentDefinition, config: Config):
         self.agent_def = agent_def
@@ -709,16 +718,16 @@ class AgentExecutor:
     
     async def run(self, input_message: str) -> AgentResult:
         """
-        主循环:
-        1. 发送消息给 LLM
-        2. 处理 LLM 响应 (内容/工具调用/思考)
-        3. 如有工具调用，执行并将结果反馈给 LLM
-        4. 重复直到任务完成
+        Main loop:
+        1. Send message to LLM
+        2. Process LLM response (content/tool calls/thoughts)
+        3. If tool calls exist, execute and feed results back to LLM
+        4. Repeat until task completion
         """
         pass
     
     def on_activity(self, callback: Callable[[AgentActivity], None]):
-        """注册活动回调，用于流式输出"""
+        """Register activity callback for streaming output"""
         self.event_callbacks.append(callback)
 ```
 
@@ -726,7 +735,7 @@ class AgentExecutor:
 
 ```python
 class CoreToolScheduler:
-    """工具调度器 - 管理工具调用的完整生命周期"""
+    """Tool Scheduler - Manages complete tool call lifecycle"""
     
     def __init__(
         self,
@@ -748,16 +757,16 @@ class CoreToolScheduler:
         abort_signal: asyncio.Event
     ) -> None:
         """
-        调度一批工具调用:
-        1. 构建 ToolInvocation
-        2. 检查是否需要确认
-        3. 执行工具
-        4. 收集结果
+        Schedule a batch of tool calls:
+        1. Build ToolInvocation
+        2. Check if confirmation required
+        3. Execute tool
+        4. Collect results
         """
         pass
     
     def should_confirm_execute(self, tool: DeclarativeTool, args: dict) -> bool:
-        """判断是否需要人工确认"""
+        """Determine if manual confirmation is required"""
         pass
 ```
 
@@ -766,13 +775,13 @@ class CoreToolScheduler:
 ```python
 class SubagentInvocation(BaseToolInvocation):
     """
-    子代理执行容器
+    Subagent Execution Container
     
-    核心职责:
-    - 将 AgentDefinition 封装为可调用工具
-    - 初始化并运行 AgentExecutor
-    - 流式传递子代理活动
-    - 统一封装返回 ToolResult
+    Core responsibilities:
+    - Wrap AgentDefinition as callable tool
+    - Initialize and run AgentExecutor
+    - Stream subagent activities
+    - Uniformly wrap and return ToolResult
     """
     
     def __init__(
@@ -790,20 +799,20 @@ class SubagentInvocation(BaseToolInvocation):
         update_output: Callable[[str], None]
     ) -> ToolResult:
         """
-        执行子代理:
-        1. 输出 "Subagent starting..."
-        2. 创建 AgentExecutor
-        3. 绑定 onActivity 回调
-        4. 运行子代理
-        5. 封装并返回 ToolResult
+        Execute subagent:
+        1. Output "Subagent starting..."
+        2. Create AgentExecutor
+        3. Bind onActivity callback
+        4. Run subagent
+        5. Wrap and return ToolResult
         """
-        update_output(f"🚀 Subagent starting: {self.definition.name}...")
+        update_output(f"Subagent starting: {self.definition.name}...")
         
         executor = AgentExecutor(self.definition, self.config)
         
-        # 流式传递思考过程
+        # Stream thought process
         executor.on_activity(lambda event: 
-            update_output(f"🤖💭 {event.content}") 
+            update_output(f"{event.content}") 
             if event.type == "THOUGHT_CHUNK" else None
         )
         
@@ -820,7 +829,7 @@ class SubagentInvocation(BaseToolInvocation):
 
 ```python
 class Task:
-    """任务管理 - 状态机与事件发布"""
+    """Task Management - State machine and event publishing"""
     
     def __init__(
         self,
@@ -845,7 +854,7 @@ class Task:
         message: Optional[str] = None,
         final: bool = False
     ):
-        """更新状态并发布事件"""
+        """Update state and publish event"""
         self.state = new_state
         self.event_bus.publish(TaskStatusUpdateEvent(
             task_id=self.id,
@@ -859,28 +868,28 @@ class Task:
         requests: List[ToolCallRequest],
         abort_signal: asyncio.Event
     ):
-        """调度工具调用"""
+        """Schedule tool calls"""
         self.set_state_and_publish(TaskState.WORKING)
         await self.scheduler.schedule(requests, abort_signal)
     
     async def wait_for_pending_tools(self):
-        """等待所有待处理工具完成"""
+        """Wait for all pending tools to complete"""
         pass
     
     def handle_tool_confirmation(self, call_id: str, outcome: ToolConfirmationOutcome):
-        """处理用户对工具调用的确认"""
+        """Handle user confirmation of tool calls"""
         pass
 ```
 
 ---
 
-## 🔌 ROS 2 集成
+## 🔌 ROS 2 Integration
 
-### 通信接口设计
+### Communication Interface Design
 
 ```python
 class ROSBridge:
-    """ROS 2 通信桥接层"""
+    """ROS 2 Communication Bridge Layer"""
     
     def __init__(self, node_name: str = "uav_commander"):
         self.node = rclpy.create_node(node_name)
@@ -889,32 +898,32 @@ class ROSBridge:
         self._subscribers: Dict[str, Subscription] = {}
         self._state_cache: Dict[str, Any] = {}
     
-    # === Topics (状态订阅) ===
+    # === Topics (State Subscription) ===
     
     def subscribe_uav_state(self, uav_id: str, callback: Callable):
-        """订阅无人机状态"""
+        """Subscribe to UAV state"""
         topic = f"/uav_{uav_id}/state"
         self._subscribers[topic] = self.node.create_subscription(
             UAVState, topic, callback, 10
         )
     
     def get_cached_state(self, uav_id: str) -> Optional[UAVState]:
-        """获取缓存的状态"""
+        """Get cached state"""
         return self._state_cache.get(f"uav_{uav_id}")
     
-    # === Services (即时指令) ===
+    # === Services (Immediate Commands) ===
     
     async def call_arm(self, uav_id: str, arm: bool) -> ServiceResponse:
-        """解锁/锁定"""
+        """Arm/Disarm"""
         srv_name = f"/uav_{uav_id}/arm"
         return await self._call_service(srv_name, ArmRequest(arm=arm))
     
     async def call_emergency_stop(self, uav_ids: Optional[List[str]] = None):
-        """紧急停止"""
+        """Emergency stop"""
         srv_name = "/swarm/emergency_stop"
         return await self._call_service(srv_name, EmergencyStopRequest(uav_ids=uav_ids))
     
-    # === Actions (长时任务) ===
+    # === Actions (Long-running Tasks) ===
     
     async def send_goto(
         self,
@@ -922,7 +931,7 @@ class ROSBridge:
         target: Position,
         progress_callback: Optional[Callable] = None
     ) -> ActionResult:
-        """发送航点飞行 Action"""
+        """Send waypoint flight Action"""
         action_name = f"/uav_{uav_id}/goto"
         goal = GotoGoal(target=target)
         
@@ -938,7 +947,7 @@ class ROSBridge:
         target: Position,
         progress_callback: Optional[Callable] = None
     ) -> ActionResult:
-        """发送编队 Action"""
+        """Send formation Action"""
         action_name = "/swarm/formation"
         goal = FormationGoal(
             formation_type=formation_type,
@@ -948,222 +957,222 @@ class ROSBridge:
         return await self._send_action_goal(action_name, goal, progress_callback)
 ```
 
-### 工具与 ROS 集成示例
+### Tool and ROS Integration Example
 
 ```python
 class DeviceTool(DeclarativeTool):
-    """单机控制工具"""
+    """Single Device Control Tool"""
     
     name = "device_tool"
-    description = "控制单架无人机的基本操作"
+    description = "Control basic operations of a single UAV"
     
     schema = {
         "takeoff": {
-            "description": "起飞到指定高度",
+            "description": "Takeoff to specified altitude",
             "parameters": {
-                "uav_id": {"type": "string", "description": "无人机ID"},
-                "altitude": {"type": "number", "description": "目标高度(米)", "minimum": 1, "maximum": 120}
+                "uav_id": {"type": "string", "description": "UAV ID"},
+                "altitude": {"type": "number", "description": "Target altitude (meters)", "minimum": 1, "maximum": 120}
             },
             "required": ["uav_id", "altitude"],
-            "dangerous": True  # 标记为危险操作
+            "dangerous": True  # Mark as dangerous operation
         },
-        # ... 其他方法
+        # ... other methods
     }
     
     def __init__(self, ros_bridge: ROSBridge):
         self.ros = ros_bridge
     
     async def takeoff(self, uav_id: str, altitude: float) -> ToolResult:
-        """执行起飞"""
-        # 1. 检查当前状态
+        """Execute takeoff"""
+        # 1. Check current state
         state = self.ros.get_cached_state(uav_id)
         if state and state.armed and state.altitude > 0:
-            return ToolResult.error(f"UAV {uav_id} 已在空中")
+            return ToolResult.error(f"UAV {uav_id} is already airborne")
         
-        # 2. 解锁
+        # 2. Arm
         arm_result = await self.ros.call_arm(uav_id, arm=True)
         if not arm_result.success:
-            return ToolResult.error(f"解锁失败: {arm_result.message}")
+            return ToolResult.error(f"Arm failed: {arm_result.message}")
         
-        # 3. 起飞
+        # 3. Takeoff
         takeoff_result = await self.ros.send_takeoff(uav_id, altitude)
         
         return ToolResult(
-            llm_content=[{"type": "text", "text": f"UAV {uav_id} 正在起飞到 {altitude}m"}],
-            return_display=f"✅ {uav_id} 起飞中...",
+            llm_content=[{"type": "text", "text": f"UAV {uav_id} taking off to {altitude}m"}],
+            return_display=f"{uav_id} taking off...",
             metadata={"altitude_target": altitude}
         )
 ```
 
 ---
 
-## 💡 Prompt 设计指南
+## 💡 Prompt Design Guide
 
-### System Prompt 结构
+### System Prompt Structure
 
 ```python
 COORDINATOR_SYSTEM_PROMPT = """
-你是 UAV Commander 的主协调代理，负责理解用户的无人机控制意图并调度执行。
+You are the main coordinator agent for UAV Commander, responsible for understanding user UAV control intentions and orchestrating execution.
 
-## 角色定位
-你是一个专业的无人机集群控制专家，能够:
-- 理解自然语言形式的飞行任务指令
-- 将复杂任务分解为可执行的子任务
-- 调度合适的专业子代理完成任务
-- 监控任务执行状态并向用户报告
+## Role Definition
+You are a professional UAV swarm control expert capable of:
+- Understanding flight task instructions in natural language
+- Decomposing complex tasks into executable subtasks
+- Dispatching appropriate specialist subagents to complete tasks
+- Monitoring task execution status and reporting to users
 
-## 可用工具
+## Available Tools
 
-### 子代理工具
-1. `formation_agent` - 编队控制专家
-   - 用于: 建立/变换编队、编队飞行
-   - 参数: formation_type, target, uav_ids
+### Subagent Tools
+1. `formation_agent` - Formation control specialist
+   - Use for: Establishing/changing formations, formation flight
+   - Parameters: formation_type, target, uav_ids
 
-2. `navigation_agent` - 导航规划专家  
-   - 用于: 路径规划、航点飞行、避障
-   - 参数: waypoints, constraints
+2. `navigation_agent` - Navigation planning specialist
+   - Use for: Path planning, waypoint flight, obstacle avoidance
+   - Parameters: waypoints, constraints
 
-3. `search_agent` - 搜索任务专家
-   - 用于: 区域搜索、目标识别
-   - 参数: search_area, pattern, target_type
+3. `search_agent` - Search task specialist
+   - Use for: Area search, target identification
+   - Parameters: search_area, pattern, target_type
 
-### 直接控制工具
-1. `device_tool` - 单机控制
+### Direct Control Tools
+1. `device_tool` - Single device control
    - takeoff, land, goto, arm, disarm, get_status
 
-2. `swarm_tool` - 集群控制
+2. `swarm_tool` - Swarm control
    - form_formation, disperse, sync_action
 
-3. `safety_tool` - 安全控制
+3. `safety_tool` - Safety control
    - emergency_stop, check_geofence, get_battery_status
 
-## 安全准则
-1. 起飞前必须确认所有无人机状态正常
-2. 危险操作会请求用户确认，请在输出中说明
-3. 遇到异常立即使用 emergency_stop
-4. 始终监控电量，低于 20% 时提醒返航
+## Safety Guidelines
+1. Must confirm all UAV status is normal before takeoff
+2. Dangerous operations will request user confirmation, explain in output
+3. Use emergency_stop immediately when encountering anomalies
+4. Always monitor battery level, remind return when below 20%
 
-## 输出规范
-- 执行操作前简要说明计划
-- 调用工具后报告执行状态
-- 任务完成后总结结果
-- 遇到问题时清晰说明原因和建议
+## Output Specifications
+- Briefly explain plan before executing operations
+- Report execution status after calling tools
+- Summarize results after task completion
+- Clearly explain reasons and suggestions when encountering problems
 
-## 示例对话
+## Example Dialogue
 
-用户: 让3架无人机起飞并飞到操场中心
-助手: 好的，我将执行以下步骤:
-1. 检查 3 架无人机状态
-2. 依次起飞到安全高度
-3. 编队飞往操场中心
+User: Have 3 drones take off and fly to the center of the playground
+Assistant: Understood. I will execute the following steps:
+1. Check status of 3 UAVs
+2. Take off sequentially to safe altitude
+3. Fly in formation to playground center
 
-首先检查无人机状态...
-[调用 device_tool.get_status for uav_1, uav_2, uav_3]
+First checking UAV status...
+[Call device_tool.get_status for uav_1, uav_2, uav_3]
 """
 ```
 
 ---
 
-## 🚀 开发路线图
+## 🚀 Development Roadmap
 
-### Phase 1: 基础框架 (MVP) - 4周
+### Phase 1: Core Framework (MVP) - 4 Weeks
 
-- [ ] **核心 Agent 系统**
-  - [ ] AgentExecutor 主循环实现
-  - [ ] CoreToolScheduler 工具调度
-  - [ ] Task 状态机与事件发布
-  - [ ] SubagentInvocation 子代理容器
+- [ ] **Core Agent System**
+  - [ ] AgentExecutor main loop implementation
+  - [ ] CoreToolScheduler tool scheduling
+  - [ ] Task state machine and event publishing
+  - [ ] SubagentInvocation subagent container
 
-- [ ] **LLM 集成**
-  - [ ] BaseLLM 抽象接口
-  - [ ] OpenAI / Claude 客户端实现
-  - [ ] 流式输出支持
-  - [ ] Function Calling 处理
+- [ ] **LLM Integration**
+  - [ ] BaseLLM abstract interface
+  - [ ] OpenAI / Claude client implementation
+  - [ ] Streaming output support
+  - [ ] Function Calling handling
 
-- [ ] **基础工具**
+- [ ] **Basic Tools**
   - [ ] DeviceTool (takeoff, land, goto)
-  - [ ] ToolRegistry 工具注册
+  - [ ] ToolRegistry tool registration
 
-- [ ] **CLI 界面**
-  - [ ] 交互式 REPL
-  - [ ] 工具确认对话框
+- [ ] **CLI Interface**
+  - [ ] Interactive REPL
+  - [ ] Tool confirmation dialog
 
-### Phase 2: ROS 集成与集群能力 - 4周
+### Phase 2: ROS Integration & Swarm Capabilities - 4 Weeks
 
 - [ ] **ROS 2 Bridge**
-  - [ ] Topics 订阅 (状态同步)
-  - [ ] Services 调用 (即时指令)
-  - [ ] Actions 客户端 (长时任务)
+  - [ ] Topics subscription (state synchronization)
+  - [ ] Services calls (immediate commands)
+  - [ ] Actions client (long-running tasks)
 
-- [ ] **集群控制**
-  - [ ] SwarmTool 实现
-  - [ ] 编队算法集成
-  - [ ] 多机协同逻辑
+- [ ] **Swarm Control**
+  - [ ] SwarmTool implementation
+  - [ ] Formation algorithm integration
+  - [ ] Multi-UAV coordination logic
 
 - [ ] **Multi-Agent**
-  - [ ] AgentRegistry 实现
+  - [ ] AgentRegistry implementation
   - [ ] Formation Agent
   - [ ] Navigation Agent
 
-### Phase 3: 安全与可靠性 - 3周
+### Phase 3: Safety & Reliability - 3 Weeks
 
-- [ ] **安全机制**
-  - [ ] ApprovalMode 三级审批
-  - [ ] ParameterGuard 参数校验
-  - [ ] GeofenceGuard 地理围栏
-  - [ ] EmergencyStop 紧急中断
+- [ ] **Safety Mechanisms**
+  - [ ] ApprovalMode three-level approval
+  - [ ] ParameterGuard parameter validation
+  - [ ] GeofenceGuard geofencing
+  - [ ] EmergencyStop emergency interruption
 
-- [ ] **可靠性**
-  - [ ] LLM 故障转移
-  - [ ] ROS 断连重连
-  - [ ] 任务状态持久化
+- [ ] **Reliability**
+  - [ ] LLM failover
+  - [ ] ROS disconnection reconnection
+  - [ ] Task state persistence
 
-- [ ] **日志与审计**
-  - [ ] 结构化日志
-  - [ ] 操作审计追踪
-  - [ ] 任务回放
+- [ ] **Logging & Auditing**
+  - [ ] Structured logging
+  - [ ] Operation audit tracking
+  - [ ] Task replay
 
-### Phase 4: 高级功能 - 4周
+### Phase 4: Advanced Features - 4 Weeks
 
-- [ ] **智能规划**
+- [ ] **Intelligent Planning**
   - [ ] Search Agent
-  - [ ] 自适应任务分配
-  - [ ] 异常自动恢复
+  - [ ] Adaptive task allocation
+  - [ ] Automatic anomaly recovery
 
-- [ ] **扩展能力**
-  - [ ] 多模态输入 (语音)
-  - [ ] 地图可视化 GUI
-  - [ ] MCP 服务器支持
+- [ ] **Extended Capabilities**
+  - [ ] Multimodal input (voice)
+  - [ ] Map visualization GUI
+  - [ ] MCP server support
 
 ---
 
-## 📚 技术参考
+## 📚 Technical References
 
-| 技术 | 用途 | 参考 |
-|------|------|------|
-| **Google Gemini CLI** | Agent 框架设计参考 | [gemini-cli](https://github.com/anthropics/anthropic-tools) |
-| **A2A Protocol** | Agent-to-Agent 通信 | [a2a-js/sdk](https://github.com/anthropics/a2a-js) |
-| **PX4 Autopilot** | 无人机飞控 | [px4.io](https://px4.io/) |
-| **ROS 2** | 机器人通信中间件 | [docs.ros.org](https://docs.ros.org/) |
+| Technology | Purpose | Reference |
+|------------|---------|-----------|
+| **Google Gemini CLI** | Agent framework design reference | [gemini-cli](https://github.com/anthropics/anthropic-tools) |
+| **A2A Protocol** | Agent-to-Agent communication | [a2a-js/sdk](https://github.com/anthropics/a2a-js) |
+| **PX4 Autopilot** | UAV flight controller | [px4.io](https://px4.io/) |
+| **ROS 2** | Robot communication middleware | [docs.ros.org](https://docs.ros.org/) |
 | **MAVSDK** | MAVLink SDK | [mavsdk.mavlink.io](https://mavsdk.mavlink.io/) |
 
 ---
 
-## 📄 许可证
+## 📄 License
 
-[待定]
-
----
-
-## 🤝 贡献指南
-
-[待定]
+[To Be Determined]
 
 ---
 
-> ⚠️ **安全声明**  
-> 本系统涉及无人机实际控制，可能造成人身伤害和财产损失。请在合法合规的前提下使用，确保：
-> - 具备必要的飞行资质和许可
-> - 在安全的空域和环境中操作
-> - 首次使用在仿真环境中充分测试
-> - 始终保持人工监督和紧急中断能力
+## 🤝 Contributing
+
+[To Be Determined]
+
+---
+
+> ⚠️ **Safety Disclaimer**  
+> This system involves actual UAV control and may cause personal injury and property damage. Please use in compliance with laws and regulations, ensuring:
+> - Necessary flight qualifications and permits
+> - Operation in safe airspace and environments
+> - Thorough testing in simulation environments before first use
+> - Continuous human supervision and emergency interruption capability
