@@ -1,0 +1,115 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uavcommander"
+version = "0.1.0"
+description = "基于 LLM 的智能无人机集群控制 Multi-Agent 系统"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "UAV Commander Team"}
+]
+keywords = [
+    "uav",
+    "drone",
+    "swarm",
+    "llm",
+    "agent",
+    "ros2",
+    "robotics",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Robotics",
+]
+
+dependencies = [
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+    "aiohttp>=3.9.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.0",
+    "pydantic>=2.0.0",
+    "colorama>=0.4.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.5.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.1.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+]
+all = [
+    "uavcommander[dev,docs]",
+    "rich>=13.0.0",
+    "tqdm>=4.66.0",
+    "structlog>=23.0.0",
+]
+
+[project.scripts]
+uavcommander = "cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/your-org/uavcommander"
+Documentation = "https://your-org.github.io/uavcommander"
+Repository = "https://github.com/your-org/uavcommander"
+Issues = "https://github.com/your-org/uavcommander/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "cli*", "utils*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["core", "cli", "utils"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --cov=core --cov=cli --cov=utils --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["core", "cli", "utils"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+
