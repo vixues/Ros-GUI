@@ -47,7 +47,7 @@ class DesignSystem:
                     result = subprocess.run(['system_profiler', 'SPDisplaysDataType'], 
                                           capture_output=True, text=True)
                     if 'Retina' in result.stdout:
-                        DesignSystem._dpi_scale = 2.0
+                        DesignSystem._dpi_scale = 0.8
                 except:
                     pass
         except:
