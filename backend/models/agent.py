@@ -30,7 +30,7 @@ class AgentSession(Base):
     last_interaction_at = Column(DateTime(timezone=True), nullable=True)
     
     # Metadata
-    metadata = Column(JSON, nullable=True)  # Additional session metadata
+    extra_metadata = Column(JSON, nullable=True)  # Additional session metadata
     
     # Relationships
     user = relationship("User", back_populates="agent_sessions")
@@ -64,7 +64,7 @@ class AgentAction(Base):
     executed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Metadata
-    metadata = Column(JSON, nullable=True)  # Additional action metadata
+    extra_metadata = Column(JSON, nullable=True)  # Additional action metadata
     
     # Relationships
     session = relationship("AgentSession", back_populates="actions")

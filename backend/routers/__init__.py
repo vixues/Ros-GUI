@@ -7,6 +7,9 @@ from .recordings import router as recordings_router
 from .agent import router as agent_router
 from .images import router as images_router
 from .pointclouds import router as pointclouds_router
+from .tasks import router as tasks_router
+from .logs import router as logs_router
+from .health import router as health_router
 
 __all__ = [
     "auth_router",
@@ -17,5 +20,8 @@ __all__ = [
     "agent_router",
     "images_router",
     "pointclouds_router",
+    "tasks_router",
+    "logs_router",
+    "health_router",
 ]
 

@@ -10,7 +10,7 @@ class AgentSessionCreate(BaseModel):
     session_name: Optional[str] = Field(None, max_length=255, description="Session name")
     llm_model: Optional[str] = Field(None, max_length=100, description="LLM model")
     system_prompt: Optional[str] = Field(None, description="System prompt")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata", alias="metadata")
 
 
 class AgentMessage(BaseModel):

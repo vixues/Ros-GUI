@@ -51,7 +51,7 @@ class DroneService:
             connection_url=drone_data.connection_url,
             use_mock=drone_data.use_mock,
             mock_config=drone_data.mock_config,
-            metadata=drone_data.metadata,
+            extra_metadata=drone_data.extra_metadata if hasattr(drone_data, 'extra_metadata') else getattr(drone_data, 'metadata', None),
             status=DroneStatus.IDLE.value
         )
         db.add(drone)
@@ -65,7 +65,7 @@ class DroneService:
                 user_id=user_id,
                 drone_id=drone.id,
                 payload={"action": "create_drone", "drone_data": drone_data.dict()},
-                metadata={"drone_id": drone.drone_id}
+                extra_metadata={"drone_id": drone.drone_id}
             )
             db.add(operation)
         
@@ -175,7 +175,7 @@ class DroneService:
                 user_id=user_id,
                 drone_id=drone.id,
                 payload={"action": "update_drone", "update_data": update_data},
-                metadata={"drone_id": drone.drone_id}
+                extra_metadata={"drone_id": drone.drone_id}
             )
             db.add(operation)
         
@@ -399,7 +399,7 @@ class DroneService:
                 user_id=user_id,
                 drone_id=drone.id,
                 payload={"action": "disconnect"},
-                metadata={"drone_id": drone.drone_id}
+                extra_metadata={"drone_id": drone.drone_id}
             )
             db.add(operation)
         

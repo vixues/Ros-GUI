@@ -33,7 +33,7 @@ class RecordingService:
             record_pointclouds=recording_data.record_pointclouds,
             record_states=recording_data.record_states,
             image_quality=recording_data.image_quality,
-            metadata=recording_data.metadata,
+            extra_metadata=recording_data.extra_metadata if hasattr(recording_data, 'extra_metadata') else getattr(recording_data, 'metadata', None),
             status=RecordingStatus.IDLE.value
         )
         db.add(recording)

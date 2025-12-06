@@ -16,7 +16,7 @@ class DeviceCreate(BaseModel):
     firmware_version: Optional[str] = Field(None, max_length=50, description="Firmware version")
     connection_url: Optional[str] = Field(None, max_length=255, description="Connection URL")
     connection_config: Optional[Dict[str, Any]] = Field(None, description="Connection configuration")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata", alias="metadata")
 
 
 class DeviceUpdate(BaseModel):
@@ -31,7 +31,7 @@ class DeviceUpdate(BaseModel):
     connection_config: Optional[Dict[str, Any]] = Field(None, description="Connection configuration")
     is_active: Optional[bool] = Field(None, description="Is device active")
     is_online: Optional[bool] = Field(None, description="Is device online")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata", alias="metadata")
 
 
 class DeviceResponse(BaseModel):

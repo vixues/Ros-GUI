@@ -10,6 +10,9 @@ import { FleetManagement } from './pages/FleetManagement';
 import { OperationsLogs } from './pages/OperationsLogs';
 import { ToastNotifications } from './components/ToastNotifications';
 import { useStore } from './store/useStore';
+import { mockService } from './services/mockService';
+import { authService } from './services/authService';
+import { config } from './lib/config';
 
 const App: React.FC = () => {
   const { isAuthenticated, login, logout, user } = useStore();
@@ -17,17 +20,34 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initAuth = async () => {
-      // Mock bypass for dev
-      const bypassUser = { 
-        id: 1, 
-        username: 'Commander', 
-        email: 'admin@skynet.com', 
-        is_active: true,
-        role: 'ADMIN'
-      };
-      const token = localStorage.getItem('access_token') || 'mock_token';
-      login(bypassUser, token);
-      setIsInitializing(false);
+      try {
+        // Check if we have a token
+        const token = localStorage.getItem('access_token');
+        if (token) {
+          // Try to get user info with existing token
+          const userData = config.features.useMockData
+            ? await mockService.getMe()
+            : await authService.getMe();
+          login(userData, token);
+        } else if (config.features.useMockData) {
+          // Auto-login in mock mode
+          const bypassUser = { 
+            id: 1, 
+            username: 'Commander', 
+            email: 'admin@skynet.com', 
+            is_active: true,
+            role: 'ADMIN'
+          };
+          const mockToken = 'mock_token';
+          login(bypassUser, mockToken);
+        }
+      } catch (error) {
+        console.error('Auth initialization failed:', error);
+        // Clear invalid token
+        localStorage.removeItem('access_token');
+      } finally {
+        setIsInitializing(false);
+      }
     };
     initAuth();
   }, [login]);

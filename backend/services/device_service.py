@@ -36,7 +36,7 @@ class DeviceService:
             firmware_version=device_data.firmware_version,
             connection_url=device_data.connection_url,
             connection_config=device_data.connection_config,
-            metadata=device_data.metadata
+            extra_metadata=device_data.extra_metadata if hasattr(device_data, 'extra_metadata') else getattr(device_data, 'metadata', None)
         )
         db.add(device)
         await db.commit()

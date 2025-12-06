@@ -61,7 +61,7 @@ class Drone(Base):
     tookoff = Column(Boolean, default=False, nullable=False)
     
     # Metadata
-    metadata = Column(JSON, nullable=True)  # Additional drone metadata
+    extra_metadata = Column(JSON, nullable=True)  # Additional drone metadata
     last_state_update = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

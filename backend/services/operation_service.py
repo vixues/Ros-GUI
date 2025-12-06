@@ -39,7 +39,7 @@ class OperationService:
             topic=operation_data.topic,
             service_name=operation_data.service_name,
             payload=operation_data.payload,
-            metadata=operation_data.metadata
+            extra_metadata=operation_data.extra_metadata if hasattr(operation_data, 'extra_metadata') else getattr(operation_data, 'metadata', None)
         )
         db.add(operation)
         await db.commit()

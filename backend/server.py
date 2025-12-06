@@ -19,7 +19,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import settings
 from .database import init_db, close_db
 from .cache import close_redis
-from .middleware import LoggingMiddleware, ExceptionHandlerMiddleware
+from .middleware import (
+    LoggingMiddleware, 
+    ExceptionHandlerMiddleware,
+    RequestIdMiddleware,
+    CORSSecurityMiddleware
+)
 from .schemas.response import ErrorResponse
 from .routers import (
     auth_router,
@@ -29,7 +34,10 @@ from .routers import (
     recordings_router,
     agent_router,
     images_router,
-    pointclouds_router
+    pointclouds_router,
+    tasks_router,
+    logs_router,
+    health_router
 )
 
 # Configure logging
@@ -99,9 +107,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Custom middleware
+# Custom middleware (order matters: last added = first executed)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(ExceptionHandlerMiddleware)
+app.add_middleware(CORSSecurityMiddleware)
+app.add_middleware(RequestIdMiddleware)
 
 
 # Global exception handlers
@@ -169,6 +179,7 @@ async def health_check():
 
 
 # Include routers
+app.include_router(health_router)  # Health check should be first
 app.include_router(auth_router)
 app.include_router(devices_router)
 app.include_router(drones_router)
@@ -177,6 +188,8 @@ app.include_router(recordings_router)
 app.include_router(agent_router)
 app.include_router(images_router)
 app.include_router(pointclouds_router)
+app.include_router(tasks_router)
+app.include_router(logs_router)
 
 
 def main():

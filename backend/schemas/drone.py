@@ -14,7 +14,7 @@ class DroneCreate(BaseModel):
     connection_url: Optional[str] = Field(None, max_length=255, description="ROS bridge URL")
     use_mock: bool = Field(default=False, description="Use mock client")
     mock_config: Optional[Dict[str, Any]] = Field(None, description="Mock client configuration")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata", alias="metadata")
 
 
 class DroneUpdate(BaseModel):
@@ -25,7 +25,7 @@ class DroneUpdate(BaseModel):
     use_mock: Optional[bool] = Field(None, description="Use mock client")
     mock_config: Optional[Dict[str, Any]] = Field(None, description="Mock client configuration")
     status: Optional[str] = Field(None, description="Drone status")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata", alias="metadata")
 
 
 class DroneConnectionRequest(BaseModel):

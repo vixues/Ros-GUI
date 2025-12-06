@@ -35,7 +35,7 @@ class Device(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     is_online = Column(Boolean, default=False, nullable=False)
     last_seen = Column(DateTime(timezone=True), nullable=True)
-    metadata = Column(JSON, nullable=True)  # Additional device metadata
+    extra_metadata = Column(JSON, nullable=True)  # Additional device metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     

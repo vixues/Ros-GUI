@@ -1,248 +1,332 @@
-# ROS Client
+# ROS-GUI - Professional Multi-Drone Management Platform
 
-一个用于连接和控制ROS（Robot Operating System）设备的Python客户端库，特别针对无人机控制场景进行了优化。
+专业的多无人机管理和控制平台，集成LLM智能代理支持。
 
-## 功能特性
+## 🌟 主要特性
 
-- 🔌 **WebSocket连接**: 通过rosbridge连接ROS设备
-- 📊 **状态监控**: 实时获取无人机状态（位置、姿态、电池等）
-- 📷 **图像处理**: 接收和显示相机图像
-- ☁️ **点云处理**: 接收和可视化3D点云数据
-- 🎮 **控制命令**: 发送ROS Topic控制命令
-- 🔄 **自动重连**: 支持连接断开自动重连机制
-- 🧪 **Mock模式**: 提供Mock客户端用于测试
-- 🖥️ **GUI工具**: 图形界面测试工具
+- ✅ **专业前端架构**: 模块化服务层、Zustand状态管理、TypeScript类型安全
+- ✅ **完整后端API**: FastAPI + PostgreSQL + Redis，RESTful API设计
+- ✅ **无人机管理**: 实时状态监控、远程控制、航点规划
+- ✅ **任务系统**: 任务创建、分配、状态追踪
+- ✅ **AI智能代理**: 自然语言控制无人机群
+- ✅ **系统日志**: 完整的操作日志和审计追踪
+- ✅ **Mock开发模式**: 前后端可独立开发
+- ✅ **类型安全**: 前后端完整类型定义和验证
 
-## 安装
+## 🏗️ 项目架构
 
-### 基本安装
+```
+Ros-GUI/
+├── frontend/              # React + TypeScript前端
+│   ├── services/         # API服务层（模块化）
+│   ├── store/           # Zustand状态管理
+│   ├── components/      # React组件
+│   ├── pages/          # 页面组件
+│   ├── lib/            # 工具函数和配置
+│   └── types.ts        # TypeScript类型定义
+├── backend/             # FastAPI Python后端
+│   ├── routers/        # API路由层
+│   ├── services/       # 业务逻辑层
+│   ├── models/         # 数据模型层
+│   ├── schemas/        # 数据验证层
+│   └── alembic/        # 数据库迁移
+├── rosclient/          # ROS客户端库
+├── uavcommander/       # UAV控制库
+└── INTEGRATION.md      # 前后端集成指南
+```
+
+## 🚀 快速开始
+
+### 前置要求
+
+- **Frontend**: Node.js 16+, npm
+- **Backend**: Python 3.10+, PostgreSQL 13+, Redis (可选)
+
+### 1. 启动后端
 
 ```bash
-# 克隆仓库
-git clone <repository-url>
-cd rosclient
+cd backend
 
 # 安装依赖
-pip install roslibpy numpy
+pip install -r requirements.txt
+
+# 配置数据库（可选，使用默认配置跳过）
+cp .env.example .env
+# 编辑 .env
+
+# 运行数据库迁移
+alembic upgrade head
+
+# 启动服务器
+python -m backend.server
 ```
 
-### 完整安装（包含图像和点云功能）
+后端地址: http://localhost:8000
+API文档: http://localhost:8000/docs
+
+### 2. 启动前端
 
 ```bash
-pip install roslibpy numpy opencv-python Pillow matplotlib
+cd frontend
+
+# 安装依赖
+npm install
+
+# Mock模式开发（无需后端）
+npm run dev
+
+# 或连接真实后端
+# 创建 .env.local:
+# VITE_USE_MOCK=false
+# VITE_API_URL=http://localhost:8000
+npm run dev
 ```
 
-## 快速开始
+前端地址: http://localhost:5173
 
-### 基本使用
+默认登录（Mock模式）:
+- Username: `Commander`
+- Password: 任意
 
-```python
-from rosclient import RosClient
+## 📚 文档
 
-# 创建客户端
-client = RosClient("ws://localhost:9090")
+- [前后端集成指南](./INTEGRATION.md) - 完整的前后端对接说明
+- [Frontend架构](./frontend/ARCHITECTURE.md) - 前端架构和API使用
+- [Backend API](./backend/API_INTEGRATION.md) - 后端API规范
+- [Backend详细文档](./backend/README.md) - 后端架构说明
 
-# 异步连接
-client.connect_async()
+## 🔧 开发模式
 
-# 等待连接
-import time
-time.sleep(2)
-
-# 获取状态
-if client.is_connected():
-    state = client.get_status()
-    print(f"模式: {state.mode}, 电池: {state.battery}%")
-    
-    position = client.get_position()
-    print(f"位置: {position}")
-
-# 发送控制命令
-client.publish("/control", "controller_msgs/cmd", {"cmd": 1})
-
-# 断开连接
-client.terminate()
-```
-
-### 使用Mock客户端（测试）
-
-```python
-from rosclient import MockRosClient
-
-# 创建Mock客户端（无需实际ROS连接）
-client = MockRosClient("ws://localhost:9090")
-client.connect_async()
-
-# 使用方式与真实客户端相同
-state = client.get_status()
-print(f"状态: {state}")
-```
-
-## 项目结构
-
-```text
-rosclient/
-├── rosclient/              # 主包
-│   ├── core/              # 核心功能
-│   │   ├── base.py        # 基类
-│   │   └── topic_service_manager.py  # Topic/Service管理器
-│   ├── clients/           # 客户端实现
-│   │   ├── ros_client.py  # 生产环境客户端
-│   │   ├── mock_client.py # Mock客户端
-│   │   └── config.py      # 配置
-│   ├── models/            # 数据模型
-│   │   ├── drone.py       # 无人机状态模型
-│   │   └── state.py       # 连接状态枚举
-│   └── utils/             # 工具函数
-│       ├── logger.py      # 日志工具
-│       └── backoff.py     # 指数退避算法
-├── tests/                 # 测试套件
-├── rosclient_gui_test.py  # GUI测试工具
-└── README.md
-```
-
-## 主要API
-
-### RosClient
-
-```python
-# 连接管理
-client.connect_async()      # 异步连接
-client.terminate()          # 断开连接
-client.is_connected()       # 检查连接状态
-
-# 状态获取
-client.get_status()         # 获取完整状态
-client.get_position()       # 获取位置 (lat, lon, alt)
-client.get_orientation()    # 获取姿态 (roll, pitch, yaw)
-
-# 图像和点云
-client.fetch_camera_image()        # 获取相机图像
-client.get_latest_image()          # 获取最新图像
-client.fetch_point_cloud()        # 获取点云数据
-client.get_latest_point_cloud()    # 获取最新点云
-
-# 消息发布
-client.publish(topic, type, message)  # 安全发布消息
-
-# 服务调用
-client.service_call(service, type, payload)  # 安全调用服务
-```
-
-### 数据模型
-
-```python
-from rosclient import DroneState, ConnectionState
-
-# DroneState包含所有无人机状态信息
-state = DroneState(
-    connected=True,
-    armed=False,
-    mode="GUIDED",
-    battery=85.5,
-    latitude=22.5329,
-    longitude=113.93029,
-    altitude=100.0,
-    # ... 更多字段
-)
-
-# ConnectionState枚举
-state = ConnectionState.CONNECTED
-```
-
-## GUI测试工具
-
-项目包含一个图形界面测试工具，方便测试和调试：
+### Mock开发（推荐用于前端开发）
 
 ```bash
-python rosclient_gui_test.py
+# frontend/.env
+VITE_USE_MOCK=true
 ```
 
-GUI工具提供以下功能：
+优点：
+- 无需启动后端
+- 快速UI开发
+- 完整的Mock数据
 
-- 连接配置和测试
-- 实时状态监控
-- 图像显示
-- 点云可视化
-- 控制命令发送
-- 网络测试
-
-详细使用说明请参考 [GUI_TEST_README.md](GUI_TEST_README.md)
-
-## 测试
-
-### 运行测试
+### 真实API模式
 
 ```bash
-# 安装测试依赖
-pip install pytest pytest-cov pytest-mock
+# frontend/.env
+VITE_USE_MOCK=false
+VITE_API_URL=http://localhost:8000
+```
 
-# 运行所有测试
+用于：
+- 完整功能测试
+- 集成测试
+- 生产部署
+
+## 🎯 核心功能
+
+### 1. 无人机管理
+
+```typescript
+// Frontend
+import { droneService } from './services/droneService';
+
+// 获取无人机列表
+const drones = await droneService.getDrones();
+
+// 连接无人机
+await droneService.connectDrone(id, {
+  connection_url: 'ws://localhost:9090'
+});
+
+// 控制无人机
+await droneService.landDrone(id);
+await droneService.updateWaypoints(id, waypoints);
+```
+
+### 2. 任务管理
+
+```typescript
+// 创建任务
+const task = await taskService.createTask({
+  title: '巡逻任务',
+  description: '执行区域巡逻',
+  priority: 'HIGH',
+  assigned_drone_ids: [1, 2, 3]
+});
+
+// 更新任务状态
+await taskService.updateTask(taskId, {
+  status: 'IN_PROGRESS'
+});
+```
+
+### 3. AI智能代理
+
+```typescript
+// 创建会话
+const session = await agentService.createSession();
+
+// 发送自然语言指令
+const response = await agentService.sendMessage(sessionId, {
+  content: 'Set unit 5 altitude to 50 meters'
+});
+// 返回: { response, actions, type, data }
+```
+
+### 4. 系统日志
+
+```typescript
+// 查询日志
+const logs = await logService.getLogs({
+  level: 'ERROR',
+  module: 'SWARM',
+  limit: 100
+});
+```
+
+## 🏢 技术栈
+
+### Frontend
+- **React 19** - UI框架
+- **TypeScript** - 类型安全
+- **Zustand** - 状态管理
+- **React Router** - 路由
+- **Vite** - 构建工具
+- **TailwindCSS** - 样式
+
+### Backend
+- **FastAPI** - Web框架
+- **SQLAlchemy** - ORM
+- **Alembic** - 数据库迁移
+- **PostgreSQL** - 数据库
+- **Redis** - 缓存（可选）
+- **Pydantic** - 数据验证
+
+## 📦 API端点
+
+### 认证
+- `POST /api/auth/login` - 登录
+- `POST /api/auth/register` - 注册
+- `GET /api/auth/me` - 获取当前用户
+
+### 无人机
+- `GET /api/drones` - 获取无人机列表
+- `POST /api/drones` - 创建无人机
+- `POST /api/drones/{id}/connect` - 连接无人机
+- `POST /api/drones/{id}/disconnect` - 断开连接
+- `GET /api/drones/{id}/status` - 获取状态
+
+### 任务
+- `GET /api/tasks` - 获取任务列表
+- `POST /api/tasks` - 创建任务
+- `PUT /api/tasks/{id}` - 更新任务
+- `DELETE /api/tasks/{id}` - 删除任务
+
+### 日志
+- `GET /api/logs` - 获取系统日志
+
+### AI代理
+- `POST /api/agent/sessions` - 创建会话
+- `POST /api/agent/sessions/{id}/message` - 发送消息
+
+详细API文档: http://localhost:8000/docs
+
+## 🧪 测试
+
+```bash
+# Backend测试
+cd backend
 pytest
 
-# 运行特定模块测试
-pytest tests/tests_models/
-
-# 带覆盖率报告
-pytest --cov=rosclient --cov-report=html
+# Frontend测试（待实现）
+cd frontend
+npm test
 ```
 
-### 测试覆盖
+## 📝 数据库
 
-- ✅ 模型测试（DroneState, RosTopic, ConnectionState）
-- ✅ 工具函数测试（logger, backoff）
-- ✅ 核心功能测试（base, topic_service_manager）
-- ✅ 客户端测试（RosClient, MockRosClient）
+### 主要数据表
 
-## 配置
+- **users** - 用户账户
+- **drones** - 无人机信息
+- **tasks** - 任务管理
+- **system_logs** - 系统日志
+- **operations** - 操作记录
+- **agent_sessions** - AI会话
+- **devices** - 设备管理
+- **recordings** - 录制数据
 
-可以通过配置字典自定义客户端行为：
+### 运行迁移
 
-```python
-config = {
-    "connect_max_retries": 5,        # 最大重连次数
-    "connect_backoff_seconds": 1.0,  # 退避基础时间
-    "service_call_timeout": 5.0,     # 服务调用超时
-    "publish_retries": 2,            # 发布重试次数
-}
-
-client = RosClient("ws://localhost:9090", config=config)
+```bash
+cd backend
+alembic upgrade head
 ```
 
-## 支持的ROS Topics
+## 🔒 安全
 
-默认支持的Topic包括：
+- JWT Token认证
+- 密码哈希存储
+- CORS配置
+- SQL注入防护（ORM）
+- XSS防护
 
-- `/mavros/state` - 飞行器状态
-- `/mavros/battery` - 电池状态
-- `/mavros/global_position/global` - GPS位置
-- `/mavros/local_position/odom` - 里程计
-- `/camera/image_raw/compressed` - 相机图像
-- `/drone_1_cloud_registered` - 点云数据
-- `/control` - 控制命令
+## 🚢 部署
 
-## 依赖要求
+### Docker部署（推荐）
 
-### 必需
+```bash
+# 待实现
+docker-compose up -d
+```
 
-- Python 3.7+
-- roslibpy
-- numpy
+### 手动部署
 
-### 可选
+#### Backend
+```bash
+cd backend
+gunicorn backend.server:app -w 4 -k uvicorn.workers.UvicornWorker
+```
 
-- opencv-python (图像处理)
-- Pillow (图像显示)
-- matplotlib (点云可视化)
+#### Frontend
+```bash
+cd frontend
+npm run build
+# 将 dist/ 部署到Web服务器
+```
 
-## 许可证
-
-[根据项目实际情况填写]
-
-## 贡献
+## 🤝 贡献
 
 欢迎提交Issue和Pull Request！
 
-## 联系方式
+## 📄 许可
 
-[根据项目实际情况填写]
+MIT License
+
+## 📧 联系
+
+如有问题，请查看 [INTEGRATION.md](./INTEGRATION.md) 或提交Issue。
+
+---
+
+## 🎓 学习资源
+
+- [FastAPI文档](https://fastapi.tiangolo.com/)
+- [React文档](https://react.dev/)
+- [Zustand文档](https://docs.pmnd.rs/zustand/)
+- [TypeScript文档](https://www.typescriptlang.org/)
+
+## 🔄 更新日志
+
+### v2.0.0 (2024-12-06)
+- ✅ 完整重构前端架构
+- ✅ 模块化服务层设计
+- ✅ 新增任务管理系统
+- ✅ 新增系统日志功能
+- ✅ 完善类型定义
+- ✅ Mock开发模式
+- ✅ 前后端完整对接
+- ✅ 专业级代码组织
+
+### v1.0.0
+- 初始版本

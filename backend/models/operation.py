@@ -1,8 +1,8 @@
 """Operation model for recording all operations."""
 from datetime import datetime
 from enum import Enum as PyEnum
-from typing import Optional
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, JSON, Enum
+from typing import Optional, Dict, Any
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, JSON, Enum, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -64,7 +64,7 @@ class Operation(Base):
     duration_seconds = Column(Float, nullable=True)
     
     # Metadata
-    metadata = Column(JSON, nullable=True)  # Additional operation metadata
+    extra_metadata = Column(JSON, nullable=True)  # Additional operation metadata
     
     # Relationships
     user = relationship("User", back_populates="operations")

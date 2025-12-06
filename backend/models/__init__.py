@@ -5,6 +5,8 @@ from .drone import Drone, DroneStatus, DroneConnection
 from .operation import Operation, OperationType, OperationStatus
 from .recording import Recording, RecordingStatus
 from .agent import AgentSession, AgentAction
+from .task import Task, TaskStatus, TaskPriority
+from .log import SystemLog, LogLevel
 
 __all__ = [
     "User",
@@ -20,5 +22,10 @@ __all__ = [
     "RecordingStatus",
     "AgentSession",
     "AgentAction",
+    "Task",
+    "TaskStatus",
+    "TaskPriority",
+    "SystemLog",
+    "LogLevel",
 ]
 

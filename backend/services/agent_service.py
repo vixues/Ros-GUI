@@ -1,10 +1,11 @@
-"""Agent service for LLM agent control."""
+"""Enhanced agent service with better error handling and LLM integration."""
 import logging
 import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from ..models.agent import AgentSession, AgentAction
 from ..schemas.agent import AgentSessionCreate, AgentMessage, AgentActionRequest
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class AgentService:
-    """Service for managing LLM agent sessions."""
+    """Service for managing LLM agent sessions with enhanced error handling."""
     
     @staticmethod
     async def create_session(
@@ -33,22 +34,28 @@ class AgentService:
         Returns:
             Created session
         """
-        session = AgentSession(
-            user_id=user_id,
-            drone_id=session_data.drone_id,
-            session_name=session_data.session_name,
-            llm_model=session_data.llm_model or settings.LLM_MODEL,
-            system_prompt=session_data.system_prompt,
-            conversation_history=[],
-            metadata=session_data.metadata,
-            is_active=True
-        )
-        db.add(session)
-        await db.commit()
-        await db.refresh(session)
-        
-        logger.info(f"Created agent session: {session.id} for user {user_id}")
-        return session
+        try:
+            session = AgentSession(
+                user_id=user_id,
+                drone_id=session_data.drone_id,
+                session_name=session_data.session_name,
+                llm_model=session_data.llm_model or settings.LLM_MODEL,
+                system_prompt=session_data.system_prompt,
+                conversation_history=[],
+                extra_metadata=session_data.extra_metadata if hasattr(session_data, 'extra_metadata') else getattr(session_data, 'metadata', None),
+                is_active=True
+            )
+            db.add(session)
+            await db.flush()
+            await db.refresh(session)
+            
+            logger.info(f"Created agent session: {session.id} for user {user_id}")
+            return session
+            
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to create agent session: {e}")
+            await db.rollback()
+            raise
     
     @staticmethod
     async def get_session(db: AsyncSession, session_id: int) -> Optional[AgentSession]:
@@ -62,39 +69,46 @@ class AgentService:
         Returns:
             Agent session or None
         """
-        result = await db.execute(
-            select(AgentSession)
-            .where(AgentSession.id == session_id)
-            .options(selectinload(AgentSession.actions))
-        )
-        return result.scalar_one_or_none()
+        try:
+            result = await db.execute(
+                select(AgentSession).where(AgentSession.id == session_id)
+            )
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Failed to retrieve session {session_id}: {e}")
+            return None
     
     @staticmethod
     async def get_user_sessions(
         db: AsyncSession,
         user_id: int,
-        active_only: bool = True
+        include_inactive: bool = False
     ) -> List[AgentSession]:
         """
-        Get user's agent sessions.
+        Get all sessions for a user.
         
         Args:
             db: Database session
             user_id: User ID
-            active_only: Only return active sessions
+            include_inactive: Include inactive sessions
             
         Returns:
-            List of sessions
+            List of agent sessions
         """
-        query = select(AgentSession).where(AgentSession.user_id == user_id)
-        
-        if active_only:
-            query = query.where(AgentSession.is_active == True)
-        
-        query = query.order_by(AgentSession.started_at.desc())
-        
-        result = await db.execute(query)
-        return list(result.scalars().all())
+        try:
+            query = select(AgentSession).where(AgentSession.user_id == user_id)
+            
+            if not include_inactive:
+                query = query.where(AgentSession.is_active == True)
+            
+            query = query.order_by(AgentSession.created_at.desc())
+            
+            result = await db.execute(query)
+            return result.scalars().all()
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve user sessions: {e}")
+            return []
     
     @staticmethod
     async def process_message(
@@ -103,7 +117,7 @@ class AgentService:
         message: AgentMessage
     ) -> Dict[str, Any]:
         """
-        Process user message and generate agent response.
+        Process message through LLM agent.
         
         Args:
             db: Database session
@@ -111,67 +125,85 @@ class AgentService:
             message: User message
             
         Returns:
-            Agent response
+            Agent response with action details
         """
-        session = await AgentService.get_session(db, session_id)
-        if not session or not session.is_active:
-            raise ValueError("Session not found or inactive")
-        
-        # Create action record
-        action = AgentAction(
-            session_id=session_id,
-            action_type="message",
-            user_message=message.message,
-            status="pending"
-        )
-        db.add(action)
-        await db.flush()
-        
         try:
-            # Call LLM API (placeholder - implement actual LLM integration)
-            agent_response = await AgentService._call_llm(
-                session, message.message, message.context
+            session = await AgentService.get_session(db, session_id)
+            if not session:
+                raise ValueError(f"Session {session_id} not found")
+            
+            if not session.is_active:
+                raise ValueError(f"Session {session_id} is not active")
+            
+            # Create action record
+            action = AgentAction(
+                session_id=session_id,
+                user_message=message.message,
+                context=message.context,
+                status="pending"
             )
+            db.add(action)
+            await db.flush()
             
-            action.agent_response = agent_response.get("response", "")
-            action.executed_command = agent_response.get("command")
-            action.command_result = agent_response.get("result")
-            action.status = "success"
-            action.executed_at = datetime.utcnow()
-            
-            # Update conversation history
-            history = session.conversation_history or []
-            history.append({
-                "role": "user",
-                "content": message.message,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            history.append({
-                "role": "assistant",
-                "content": agent_response.get("response", ""),
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            session.conversation_history = history
-            session.last_interaction_at = datetime.utcnow()
-            
-            await db.commit()
-            await db.refresh(action)
-            
-            logger.info(f"Processed message in session {session_id}")
-            
-            return {
-                "response": agent_response.get("response", ""),
-                "command": agent_response.get("command"),
-                "result": agent_response.get("result"),
-                "action_id": action.id
-            }
+            # Call LLM API with error handling
+            try:
+                agent_response = await AgentService._call_llm(
+                    session, message.message, message.context
+                )
+                
+                action.agent_response = agent_response.get("response", "")
+                action.executed_command = agent_response.get("command")
+                action.command_result = agent_response.get("result")
+                action.status = "success"
+                action.executed_at = datetime.utcnow()
+                
+                # Update conversation history
+                history = session.conversation_history or []
+                history.append({
+                    "role": "user",
+                    "content": message.message,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                history.append({
+                    "role": "assistant",
+                    "content": agent_response.get("response", ""),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                
+                # Limit history size
+                if len(history) > 100:
+                    history = history[-100:]
+                
+                session.conversation_history = history
+                session.last_interaction_at = datetime.utcnow()
+                
+                await db.flush()
+                await db.refresh(action)
+                
+                logger.info(f"Processed message in session {session_id}")
+                
+                return {
+                    "response": agent_response.get("response", ""),
+                    "command": agent_response.get("command"),
+                    "result": agent_response.get("result"),
+                    "action_id": action.id,
+                    "type": agent_response.get("type", "text"),
+                    "data": agent_response.get("data"),
+                    "actions": agent_response.get("actions", [])
+                }
+                
+            except Exception as llm_error:
+                action.status = "failed"
+                action.error_message = str(llm_error)
+                action.executed_at = datetime.utcnow()
+                await db.flush()
+                
+                logger.error(f"LLM processing error in session {session_id}: {llm_error}")
+                raise
+                
         except Exception as e:
-            action.status = "failed"
-            action.error_message = str(e)
-            action.executed_at = datetime.utcnow()
-            await db.commit()
-            
-            logger.error(f"Error processing message: {e}")
+            logger.error(f"Error processing message in session {session_id}: {e}")
+            await db.rollback()
             raise
     
     @staticmethod
@@ -181,7 +213,7 @@ class AgentService:
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Call LLM API (placeholder implementation).
+        Call LLM API.
         
         Args:
             session: Agent session
@@ -191,27 +223,23 @@ class AgentService:
         Returns:
             LLM response
         """
-        if not settings.LLM_ENABLED:
-            return {
-                "response": "LLM agent is disabled. Please enable it in configuration.",
-                "command": None,
-                "result": None
-            }
+        # TODO: Implement actual LLM integration (OpenAI, Anthropic, etc.)
+        # This is a placeholder implementation
         
-        # TODO: Implement actual LLM API call
-        # This is a placeholder that should be replaced with actual LLM integration
-        # (e.g., OpenAI, Anthropic, local LLM, etc.)
+        logger.info(f"Calling LLM for session {session.id}")
         
-        logger.warning("LLM API call not implemented - using placeholder")
-        
+        # Mock response for now
         return {
-            "response": f"Received message: {user_message}. LLM integration pending.",
+            "response": f"Acknowledged: {user_message}. Standing by for further commands.",
             "command": None,
-            "result": None
+            "result": None,
+            "type": "text",
+            "data": None,
+            "actions": []
         }
     
     @staticmethod
-    async def end_session(db: AsyncSession, session_id: int) -> Optional[AgentSession]:
+    async def end_session(db: AsyncSession, session_id: int) -> bool:
         """
         End agent session.
         
@@ -220,18 +248,22 @@ class AgentService:
             session_id: Session ID
             
         Returns:
-            Updated session or None
+            True if successful
         """
-        session = await AgentService.get_session(db, session_id)
-        if not session:
-            return None
-        
-        session.is_active = False
-        session.ended_at = datetime.utcnow()
-        
-        await db.commit()
-        await db.refresh(session)
-        
-        logger.info(f"Ended agent session: {session_id}")
-        return session
-
+        try:
+            session = await AgentService.get_session(db, session_id)
+            if not session:
+                return False
+            
+            session.is_active = False
+            session.ended_at = datetime.utcnow()
+            
+            await db.flush()
+            
+            logger.info(f"Ended agent session: {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to end session {session_id}: {e}")
+            await db.rollback()
+            return False

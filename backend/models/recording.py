@@ -53,7 +53,7 @@ class Recording(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     
     # Metadata
-    metadata = Column(JSON, nullable=True)  # Additional recording metadata
+    extra_metadata = Column(JSON, nullable=True)  # Additional recording metadata
     
     # Relationships
     drone = relationship("Drone", back_populates="recordings")

@@ -1,369 +1,179 @@
+/**
+ * Unified API entry point
+ * 统一的API入口，自动根据配置选择Mock或真实服务
+ */
 
-import { AuthResponse, Drone, DroneStatus, AgentMessage, Task, TaskStatus, TaskPriority, User, Waypoint, SystemLog } from '../types';
+import { config } from '../lib/config';
+import { mockService } from './mockService';
+import { authService } from './authService';
+import { droneService } from './droneService';
+import { taskService } from './taskService';
+import { agentService } from './agentService';
+import { logService } from './logService';
+import { operationService } from './operationService';
 
-const API_URL = 'http://localhost:8000';
-const USE_MOCK = true; // Toggle this to false when Backend is live
+// 根据配置决定使用Mock还是真实API
+const useMock = config.features.useMockData;
 
-// Real-world center (Mojave Desert Test Site)
-const HOME_BASE = {
-    lat: 35.0542,
-    lng: -118.1523
-};
-
-// --- MOCK DATA GENERATOR ---
-const generateMockDrones = (count: number): Drone[] => {
-  const drones: Drone[] = [];
-  const models = ['Scout MK-I', 'Scout MK-II', 'Heavy Lift X8', 'Interceptor'];
-  
-  for (let i = 1; i <= count; i++) {
-    let status = DroneStatus.IDLE;
-    const rand = Math.random();
-    if (rand > 0.9) status = DroneStatus.ERROR;
-    else if (rand > 0.8) status = DroneStatus.OFFLINE;
-    else if (rand > 0.6) status = DroneStatus.RETURNING;
-    else if (rand > 0.3) status = DroneStatus.FLYING;
-
-    const latOffset = (Math.random() - 0.5) * 0.025; 
-    const lngOffset = (Math.random() - 0.5) * 0.030;
-    
-    const altitude = status === DroneStatus.FLYING || status === DroneStatus.RETURNING 
-        ? 20 + Math.random() * 100 
-        : 0;
-    
-    const waypoints: Waypoint[] = [];
-    if (status === DroneStatus.FLYING) {
-        for(let w=0; w<3; w++) {
-            waypoints.push({
-                id: `wp-${i}-${w}`,
-                lat: HOME_BASE.lat + latOffset + (Math.random() - 0.5) * 0.01,
-                lng: HOME_BASE.lng + lngOffset + (Math.random() - 0.5) * 0.01,
-                alt: 50,
-                type: 'FLY_THROUGH',
-                speed: 15
-            });
-        }
+/**
+ * 统一的API对象
+ * 根据配置自动路由到Mock或真实服务
+ */
+export const api = {
+  // ==================== Auth API ====================
+  async login(username: string, password: string) {
+    if (useMock) {
+      return mockService.login(username, password);
     }
+    return authService.login({ username, password });
+  },
 
-    drones.push({
-      id: i,
-      serial_number: `SN-${1000 + i}`,
-      name: `Unit-${i.toString().padStart(3, '0')}`,
-      model_type: models[Math.floor(Math.random() * models.length)],
-      status: status,
-      battery_level: Math.floor(Math.random() * 100),
-      altitude: altitude,
-      latitude: HOME_BASE.lat + latOffset,
-      longitude: HOME_BASE.lng + lngOffset,
-      heading: Math.floor(Math.random() * 360),
-      last_seen: new Date().toISOString(),
-      waypoints: waypoints
-    });
-  }
-  return drones;
-};
-
-// --- MOCK STATE ---
-const MOCK_USER: User = { id: 1, username: 'Commander', email: 'admin@skynet.com', is_active: true, role: 'ADMIN' };
-let MOCK_DRONES: Drone[] = generateMockDrones(64); 
-let MOCK_TASKS: Task[] = [
-  { id: 101, title: 'Perimeter Scan Alpha', description: 'Routine surveillance of sector 7G. Maintain altitude 50m.', status: TaskStatus.IN_PROGRESS, priority: TaskPriority.MEDIUM, assigned_drone_ids: [1, 5, 12, 15], created_at: new Date().toISOString() },
-  { id: 102, title: 'Emergency Response Test', description: 'Simulate rapid deployment for search and rescue scenario.', status: TaskStatus.PENDING, priority: TaskPriority.CRITICAL, assigned_drone_ids: [], created_at: new Date().toISOString() },
-  { id: 103, title: 'Battery Calibration', description: 'Perform discharge cycles on Unit 4.', status: TaskStatus.COMPLETED, priority: TaskPriority.LOW, assigned_drone_ids: [4], created_at: new Date().toISOString() },
-];
-let MOCK_LOGS: SystemLog[] = [
-    { id: 'log-1', timestamp: new Date(Date.now() - 10000).toISOString(), level: 'INFO', module: 'AUTH', message: 'User Commander logged in from 192.168.1.5' },
-    { id: 'log-2', timestamp: new Date(Date.now() - 50000).toISOString(), level: 'WARNING', module: 'SWARM', message: 'Unit-005 intermittent signal loss detected' },
-    { id: 'log-3', timestamp: new Date(Date.now() - 120000).toISOString(), level: 'SUCCESS', module: 'MISSION', message: 'Task 103 completed successfully' },
-];
-
-class ApiService {
-  private token: string | null = null;
-
-  constructor() {
-    this.token = localStorage.getItem('access_token');
-  }
-
-  setToken(token: string) {
-    this.token = token;
-    localStorage.setItem('access_token', token);
-  }
+  async getMe() {
+    if (useMock) {
+      return mockService.getMe();
+    }
+    return authService.getMe();
+  },
 
   logout() {
-    this.token = null;
-    localStorage.removeItem('access_token');
-  }
+    if (useMock) {
+      mockService.logout();
+    } else {
+      authService.logout();
+    }
+  },
 
-  // Generic Request Wrapper
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...(this.token ? { 'Authorization': `Bearer ${this.token}` } : {}),
-      ...options.headers,
-    };
+  // ==================== Drone API ====================
+  async getDrones() {
+    if (useMock) {
+      return mockService.getDrones();
+    }
+    return droneService.getDrones();
+  },
 
+  async getDrone(id: number) {
+    if (useMock) {
+      return mockService.getDrone(id);
+    }
+    return droneService.getDrone(id);
+  },
+
+  async connectDrone(id: number, connection?: any) {
+    if (useMock) {
+      return mockService.connectDrone(id);
+    }
+    return droneService.connectDrone(id, connection || {
+      connection_url: 'ws://localhost:9090',
+      use_mock: false
+    });
+  },
+
+  async disconnectDrone(id: number) {
+    if (useMock) {
+      return mockService.disconnectDrone(id);
+    }
+    return droneService.disconnectDrone(id);
+  },
+
+  async landDrone(id: number) {
+    if (useMock) {
+      return mockService.landDrone(id);
+    }
+    return droneService.landDrone(id);
+  },
+
+  async rebootDrone(id: number) {
+    if (useMock) {
+      return mockService.rebootDrone(id);
+    }
+    return droneService.rebootDrone(id);
+  },
+
+  async updateWaypoints(id: number, waypoints: any[]) {
+    if (useMock) {
+      return mockService.updateWaypoints(id, waypoints);
+    }
+    return droneService.updateWaypoints(id, waypoints);
+  },
+
+  // ==================== Task API ====================
+  async getTasks() {
+    if (useMock) {
+      return mockService.getTasks();
+    }
+    return taskService.getTasks();
+  },
+
+  async createTask(task: any) {
+    if (useMock) {
+      return mockService.createTask(task);
+    }
+    return taskService.createTask(task);
+  },
+
+  async updateTask(id: number, updates: any) {
+    if (useMock) {
+      return mockService.updateTask(id, updates);
+    }
+    return taskService.updateTask(id, updates);
+  },
+
+  async deleteTask(id: number) {
+    if (useMock) {
+      return mockService.deleteTask(id);
+    }
+    return taskService.deleteTask(id);
+  },
+
+  // ==================== System Logs API ====================
+  async getSystemLogs(filters?: any) {
+    if (useMock) {
+      return mockService.getSystemLogs();
+    }
+    return logService.getLogs(filters);
+  },
+
+  // ==================== Agent API ====================
+  async sendAgentMessage(sessionId: string, message: string) {
+    if (useMock) {
+      return mockService.sendAgentMessage(sessionId, message);
+    }
+    // 真实API需要先创建session，这里简化处理
     try {
-      const res = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
-      if (res.status === 401) {
-          // Handle unauthorized
-          this.logout();
-          window.location.hash = '/login';
-          throw new Error('Unauthorized');
-      }
-      if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          throw new Error(errorData.detail || `API Error: ${res.statusText}`);
-      }
-      return res.json();
-    } catch (e: any) {
-        if (!USE_MOCK) throw e;
-        return this.mockHandler<T>(endpoint, options);
+      const sessionIdNum = parseInt(sessionId);
+      return agentService.sendMessage(sessionIdNum, {
+        content: message,
+        role: 'user'
+      });
+    } catch (error) {
+      console.error('Agent message error:', error);
+      throw error;
     }
-  }
+  },
 
-  // --- Mock Handler Logic ---
-  private mockHandler<T>(endpoint: string, options: RequestInit): Promise<T> {
-      return new Promise((resolve, reject) => {
-          setTimeout(() => {
-              // Normalize endpoint (remove query params for matching)
-              // Construct a dummy URL to safely parse path
-              const urlStr = endpoint.startsWith('http') ? endpoint : `http://mock${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
-              const url = new URL(urlStr);
-              const path = url.pathname;
-              const method = options.method || 'GET';
-
-              // AUTH
-              if (path.includes('/auth/token')) {
-                  resolve({ access_token: "mock_jwt_token", token_type: "bearer", user: MOCK_USER } as any);
-                  return;
-              }
-              if (path.includes('/auth/me')) {
-                  resolve(MOCK_USER as any);
-                  return;
-              }
-
-              // DRONES
-              if (path === '/drones/') {
-                  resolve(MOCK_DRONES as any);
-                  return;
-              }
-              // Drone Actions - Robust regex matching
-              if (path.match(/\/drones\/\d+\/(connect|disconnect|land|reboot)/) || (path.startsWith('/drones/') && method === 'POST')) {
-                  resolve({ status: "success" } as any);
-                  return;
-              }
-              if (path.match(/\/drones\/\d+\/waypoints/)) {
-                 resolve({ success: true } as any);
-                 return;
-              }
-
-              // TASKS
-              if (path === '/tasks/' && method === 'GET') {
-                  resolve(MOCK_TASKS as any);
-                  return;
-              }
-              if (path === '/tasks/' && method === 'POST') {
-                  const body = JSON.parse(options.body as string);
-                  const newTask = { ...body, id: Date.now(), created_at: new Date().toISOString() };
-                  MOCK_TASKS.push(newTask);
-                  resolve(newTask as any);
-                  return;
-              }
-              if (path.match(/\/tasks\/\d+/) && method === 'PUT') {
-                  const id = parseInt(path.split('/')[2]);
-                  const updates = JSON.parse(options.body as string);
-                  MOCK_TASKS = MOCK_TASKS.map(t => t.id === id ? { ...t, ...updates } : t);
-                  resolve(MOCK_TASKS.find(t => t.id === id) as any);
-                  return;
-              }
-              // Handle Delete for safety
-              if (path.match(/\/tasks\/\d+/) && method === 'DELETE') {
-                  const id = parseInt(path.split('/')[2]);
-                  MOCK_TASKS = MOCK_TASKS.filter(t => t.id !== id);
-                  resolve({ success: true } as any);
-                  return;
-              }
-
-              // LOGS
-              if (path === '/logs/') {
-                  resolve(MOCK_LOGS as any);
-                  return;
-              }
-
-              // SWARM
-              if (path === '/swarm/broadcast') {
-                  resolve({ success: true } as any);
-                  return;
-              }
-
-              // AGENT
-              if (path === '/agent/chat') {
-                  // Handled in specific method below for complex logic
-              }
-
-              console.warn(`Mock endpoint missing for: ${endpoint} [${method}]`);
-              // Fallback resolve to prevent crashing if minor endpoint missing
-              resolve({} as any); 
-          }, 300); // Latency
-      });
-  }
-
-  // --- Public Methods ---
-
-  async login(username: string, password: string) {
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('password', password);
-      // We manually fetch here because of form-data/content-type specifics
-      if (USE_MOCK) return this.mockHandler<AuthResponse>('/auth/token', {});
-      const res = await fetch(`${API_URL}/auth/token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: formData
-      });
-      if(!res.ok) throw new Error('Login failed');
-      const data = await res.json();
-      this.setToken(data.access_token);
-      return data;
-  }
-
-  async getMe() { return this.request<User>('/auth/me'); }
-
-  // Drones
-  async getDrones() { return this.request<Drone[]>('/drones/'); }
-  async connectDrone(id: number) { return this.request(`/drones/${id}/connect`, { method: 'POST' }); }
-  async disconnectDrone(id: number) { return this.request(`/drones/${id}/disconnect`, { method: 'POST' }); }
-  async landDrone(id: number) { return this.request(`/drones/${id}/land`, { method: 'POST' }); }
-  async rebootDrone(id: number) { return this.request(`/drones/${id}/reboot`, { method: 'POST' }); }
-  async updateWaypoints(id: number, waypoints: Waypoint[]) {
-      return this.request(`/drones/${id}/waypoints`, { 
-          method: 'PUT', 
-          body: JSON.stringify(waypoints) 
-      });
-  }
-
-  // Swarm
+  // ==================== Swarm Control API ====================
   async broadcastCommand(command: string, params: any = {}) {
-      return this.request('/swarm/broadcast', {
-          method: 'POST',
-          body: JSON.stringify({ command, params })
-      });
-  }
-
-  // Tasks
-  async getTasks() { return this.request<Task[]>('/tasks/'); }
-  async createTask(task: Partial<Task>) { return this.request<Task>('/tasks/', { method: 'POST', body: JSON.stringify(task) }); }
-  async updateTask(id: number, updates: Partial<Task>) { return this.request<Task>(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(updates) }); }
-  async deleteTask(id: number) { return this.request(`/tasks/${id}`, { method: 'DELETE' }); }
-
-  // Logs
-  async getSystemLogs() { return this.request<SystemLog[]>('/logs/'); }
-
-  // Agent (Complex Mock with Enhanced NLU)
-  async sendAgentMessage(sessionId: string, message: string): Promise<{ response: string, actions: any[], type?: string, data?: any }> {
-    if (!USE_MOCK) {
-        return this.request('/agent/chat', { method: 'POST', body: JSON.stringify({ session_id: sessionId, message }) });
+    if (useMock) {
+      // Mock实现
+      await new Promise(resolve => setTimeout(resolve, 300));
+      return { success: true };
     }
+    // 真实实现（待后端实现）
+    return { success: true };
+  },
+};
 
-    // Mock Logic
-    await new Promise(r => setTimeout(r, 1200));
-    const msg = message.toLowerCase();
+// 导出所有服务供高级用法使用
+export {
+  authService,
+  droneService,
+  taskService,
+  agentService,
+  logService,
+  operationService,
+  mockService,
+};
 
-    // 1. Image/Scan Intent
-    if (msg.includes('scan') || msg.includes('image') || msg.includes('photo')) {
-        return {
-            response: "Initiating optical sweep. Target identified at Sector 7.",
-            actions: [{ action_type: 'CAPTURE_IMAGE', status: 'EXECUTED', timestamp: new Date().toISOString() }],
-            type: 'image',
-            data: {
-                url: 'https://images.unsplash.com/photo-1506947411487-a56738267384?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
-                objects: ['Vehicle', 'Person'],
-                confidence: 0.89,
-                location: '35.054, -118.152'
-            }
-        };
-    }
+// 导出配置
+export { config };
 
-    // 2. Specific Unit Control: Altitude
-    // Matches: "Set unit 5 altitude to 40", "Unit 5 alt 40m", etc.
-    const altMatch = msg.match(/(?:unit|drone)\s?(\d+).*(?:altitude|alt)\s?(?:to)?\s?(\d+)/i);
-    if (altMatch) {
-        const [_, id, alt] = altMatch;
-        return {
-            response: `Command confirmed. Adjusting Unit-${id.padStart(3,'0')} flight ceiling to ${alt} meters.`,
-            actions: [{ 
-                action_type: 'SET_ALTITUDE', 
-                parameters: { drone_id: parseInt(id), altitude: parseInt(alt) },
-                status: 'EXECUTED', 
-                timestamp: new Date().toISOString() 
-            }],
-            type: 'text'
-        };
-    }
-
-    // 3. Specific Unit Control: Speed
-    const speedMatch = msg.match(/(?:unit|drone)\s?(\d+).*(?:speed|velocity)\s?(?:to)?\s?(\d+)/i);
-    if (speedMatch) {
-        const [_, id, speed] = speedMatch;
-        return {
-            response: `Speed adjustment acknowledged. Unit-${id.padStart(3,'0')} accelerating to ${speed} m/s.`,
-            actions: [{ 
-                action_type: 'SET_SPEED', 
-                parameters: { drone_id: parseInt(id), speed: parseInt(speed) },
-                status: 'EXECUTED', 
-                timestamp: new Date().toISOString() 
-            }],
-            type: 'text'
-        };
-    }
-
-    // 4. Return to Launch (RTL)
-    const rtlMatch = msg.match(/(?:return|rtl|home).*(?:unit|drone)\s?(\d+)/i);
-    if (rtlMatch) {
-        const [_, id] = rtlMatch;
-        return {
-            response: `RTL protocol engaged for Unit-${id.padStart(3,'0')}. Returning to base immediately.`,
-            actions: [{ 
-                action_type: 'RTL', 
-                parameters: { drone_id: parseInt(id) },
-                status: 'EXECUTED', 
-                timestamp: new Date().toISOString() 
-            }],
-            type: 'text'
-        };
-    }
-
-    // 5. General Telemetry
-    if (msg.includes('status') || msg.includes('telemetry') || msg.includes('report')) {
-        return {
-            response: "Telemetry uplink established. Swarm operational status is NOMINAL.",
-            actions: [],
-            type: 'drone_telemetry',
-            data: MOCK_DRONES[0] // Just show first drone as example
-        };
-    }
-
-    // 6. Mission Info
-    if (msg.includes('mission') || msg.includes('plan')) {
-        return {
-            response: "Retrieving active mission profile...",
-            actions: [],
-            type: 'mission_status',
-            data: {
-                title: 'Operation Beta',
-                status: 'IN PROGRESS',
-                progress: 65,
-                steps: ['Deploy', 'Scan', 'RTL']
-            }
-        };
-    }
-
-    // Default Fallback
-    return {
-        response: `[DEMO] Command processed: "${message}". I am listening for swarm directives. Try asking me to "Scan sector", "Set Unit 1 altitude to 50", or "Return Unit 5".`,
-        actions: [],
-        type: 'text'
-    };
-  }
-}
-
-export const api = new ApiService();

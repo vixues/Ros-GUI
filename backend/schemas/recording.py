@@ -14,14 +14,14 @@ class RecordingCreate(BaseModel):
     record_pointclouds: bool = Field(default=True, description="Record point clouds")
     record_states: bool = Field(default=True, description="Record states")
     image_quality: int = Field(default=85, ge=0, le=100, description="Image quality (0-100)")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata", alias="metadata")
 
 
 class RecordingUpdate(BaseModel):
     """Recording update request model."""
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Recording name")
     status: Optional[RecordingStatus] = Field(None, description="Recording status")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata", alias="metadata")
 
 
 class RecordingResponse(BaseModel):

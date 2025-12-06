@@ -13,7 +13,7 @@ class OperationCreate(BaseModel):
     topic: Optional[str] = Field(None, max_length=255, description="Topic name (for publish)")
     service_name: Optional[str] = Field(None, max_length=255, description="Service name (for service calls)")
     payload: Optional[Dict[str, Any]] = Field(None, description="Operation payload")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata", alias="metadata")
 
 
 class OperationQuery(BaseModel):
